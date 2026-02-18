@@ -1,7 +1,3 @@
-/* =========================================================
-   IMPORTS
-========================================================= */
-
 import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
@@ -10,29 +6,17 @@ import { fileURLToPath } from "url";
 
 dotenv.config();
 
-/* =========================================================
-   APP INIT
-========================================================= */
-
 const app = express();
 app.use(express.json());
 
-/* =========================================================
-   PATH FIX (ES MODULE SUPPORT)
-========================================================= */
+/* PATH */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/* =========================================================
-   STATIC UI SERVE
-========================================================= */
-
 app.use(express.static(path.join(__dirname, "public")));
 
-/* =========================================================
-   EMBEDDED APP IFRAME FIX
-========================================================= */
+/* EMBED FIX */
 
 app.use((req, res, next) => {
   res.setHeader(
@@ -42,16 +26,12 @@ app.use((req, res, next) => {
   next();
 });
 
-/* =========================================================
-   ENV VARIABLES
-========================================================= */
+/* ENV */
 
 const SHOP = process.env.SHOP;
 const TOKEN = process.env.SHOPIFY_TOKEN;
 
-/* =========================================================
-   ROOT ROUTE → LOAD UI
-========================================================= */
+/* ROOT UI */
 
 app.get("/", (req, res) => {
   res.sendFile(
@@ -59,9 +39,7 @@ app.get("/", (req, res) => {
   );
 });
 
-/* =========================================================
-   GET ALL PRODUCTS
-========================================================= */
+/* GET PRODUCTS */
 
 async function getProducts() {
 
@@ -77,14 +55,12 @@ async function getProducts() {
   return res.data.products;
 }
 
-/* =========================================================
-   GET VARIANT METAFIELDS
-========================================================= */
+/* GET PRODUCT METAFIELDS */
 
-async function getMetafields(variantId) {
+async function getProductMetafields(productId) {
 
   const res = await axios.get(
-    `https://${SHOP}/admin/api/2023-10/variants/${variantId}/metafields.json`,
+    `https://${SHOP}/admin/api/2023-10/products/${productId}/metafields.json`,
     {
       headers: {
         "X-Shopify-Access-Token": TOKEN,
@@ -95,16 +71,11 @@ async function getMetafields(variantId) {
   return res.data.metafields;
 }
 
-/* =========================================================
-   UPDATE PRICES (GOLD ONLY)
-========================================================= */
+/* UPDATE PRICE */
 
 app.post("/update-prices", async (req, res) => {
 
   const { goldRate } = req.body;
-
-  if (!goldRate)
-    return res.send("Gold rate missing");
 
   try {
 
@@ -112,32 +83,30 @@ app.post("/update-prices", async (req, res) => {
 
     for (const product of products) {
 
+      /* PRODUCT METAFIELD FETCH */
+
+      const metafields =
+        await getProductMetafields(product.id);
+
+      let goldWeight = 0;
+
+      metafields.forEach((mf) => {
+
+        if (
+          mf.namespace === "custom" &&
+          mf.key === "gold_weight"
+        ) {
+          goldWeight =
+            parseFloat(mf.value);
+        }
+      });
+
+      /* LOOP VARIANTS */
+
       for (const variant of product.variants) {
-
-        /* ---------- METAFIELDS ---------- */
-
-        const metafields =
-          await getMetafields(variant.id);
-
-        let goldWeight = 0;
-
-        metafields.forEach((mf) => {
-
-          if (
-            mf.namespace === "custom" &&
-            mf.key === "gold_weight"
-          ) {
-            goldWeight =
-              parseFloat(mf.value);
-          }
-        });
-
-        /* ---------- BASE PRICE ---------- */
 
         const basePrice =
           parseFloat(variant.price);
-
-        /* ---------- CALCULATION ---------- */
 
         const goldValue =
           goldWeight * goldRate;
@@ -145,7 +114,7 @@ app.post("/update-prices", async (req, res) => {
         const finalPrice =
           basePrice + goldValue;
 
-        /* ---------- UPDATE VARIANT ---------- */
+        /* UPDATE */
 
         await axios.put(
           `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
@@ -164,25 +133,21 @@ app.post("/update-prices", async (req, res) => {
         );
 
         console.log(
-          `Updated Variant ${variant.id} → ₹${finalPrice}`
+          `Updated ${variant.id} → ₹${finalPrice}`
         );
       }
     }
 
-    res.send("All Website Prices Updated ✅");
+    res.send("Prices Updated Successfully ✅");
 
   } catch (err) {
     console.error(err.response?.data || err);
-    res.status(500).send("Price update error");
+    res.status(500).send("Error updating");
   }
 });
 
-/* =========================================================
-   SERVER START
-========================================================= */
+/* SERVER */
 
 app.listen(3000, () => {
-  console.log("=================================");
   console.log("Server running on port 3000");
-  console.log("=================================");
 });
