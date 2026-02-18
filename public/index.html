@@ -2,32 +2,63 @@
 <html>
 <head>
   <title>Gold Price Updater</title>
+
   <style>
-    body { font-family: Arial; padding: 40px; }
-    input, button {
-      padding: 12px;
-      width: 300px;
-      margin-top: 10px;
+    body {
+      font-family: Arial;
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
     }
+
+    .card {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      width: 350px;
+      text-align: center;
+      box-shadow: 0 0 10px #ccc;
+    }
+
+    input {
+      padding: 12px;
+      width: 100%;
+      margin-top: 15px;
+    }
+
     button {
+      padding: 12px;
+      width: 100%;
+      margin-top: 15px;
       background: black;
       color: white;
       border: none;
+      cursor: pointer;
     }
   </style>
 </head>
+
 <body>
 
-<h2>Gold Price Updater</h2>
+<div class="card">
 
-<label>Gold Rate (₹ per gram)</label><br>
-<input id="goldRate" placeholder="Enter gold rate"><br>
+  <h2>Gold Price Updater</h2>
 
-<button onclick="updatePrices()">
-Update Website Prices
-</button>
+  <input
+    id="goldRate"
+    placeholder="Enter Gold Price ₹ / gram"
+  >
+
+  <button onclick="updatePrices()">
+    Update Website Prices
+  </button>
+
+</div>
 
 <script>
+
 async function updatePrices() {
 
   const goldRate =
@@ -43,8 +74,9 @@ async function updatePrices() {
     })
   });
 
-  alert("Prices Updated ✅");
+  alert("Prices Updated Successfully ✅");
 }
+
 </script>
 
 </body>

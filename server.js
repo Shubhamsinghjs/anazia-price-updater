@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-/* ---------- IFRAME FIX ---------- */
+/* ---------- EMBED FIX ---------- */
 
 app.use((req, res, next) => {
   res.setHeader(
@@ -28,8 +28,8 @@ app.use((req, res, next) => {
 
 /* ---------- ENV ---------- */
 
-const ACCESS_TOKEN = process.env.SHOPIFY_TOKEN;
 const SHOP = process.env.SHOP;
+const TOKEN = process.env.SHOPIFY_TOKEN;
 
 /* =====================================================
    ROOT UI
@@ -51,7 +51,7 @@ async function getProducts() {
     `https://${SHOP}/admin/api/2023-10/products.json`,
     {
       headers: {
-        "X-Shopify-Access-Token": ACCESS_TOKEN,
+        "X-Shopify-Access-Token": TOKEN,
       },
     }
   );
@@ -60,7 +60,7 @@ async function getProducts() {
 }
 
 /* =====================================================
-   GET VARIANT METAFIELDS
+   GET METAFIELDS
 ===================================================== */
 
 async function getMetafields(variantId) {
@@ -69,7 +69,7 @@ async function getMetafields(variantId) {
     `https://${SHOP}/admin/api/2023-10/variants/${variantId}/metafields.json`,
     {
       headers: {
-        "X-Shopify-Access-Token": ACCESS_TOKEN,
+        "X-Shopify-Access-Token": TOKEN,
       },
     }
   );
@@ -78,7 +78,7 @@ async function getMetafields(variantId) {
 }
 
 /* =====================================================
-   UPDATE PRICE LOGIC
+   UPDATE PRICE
 ===================================================== */
 
 app.post("/update-prices", async (req, res) => {
@@ -114,13 +114,13 @@ app.post("/update-prices", async (req, res) => {
         const basePrice =
           parseFloat(variant.price);
 
-        /* ---------- CALCULATION ---------- */
+        /* ---------- CALC ---------- */
 
-        const goldPrice =
+        const goldValue =
           goldWeight * goldRate;
 
         const finalPrice =
-          basePrice + goldPrice;
+          basePrice + goldValue;
 
         /* ---------- UPDATE ---------- */
 
@@ -134,21 +134,19 @@ app.post("/update-prices", async (req, res) => {
           },
           {
             headers: {
-              "X-Shopify-Access-Token":
-                ACCESS_TOKEN,
-              "Content-Type":
-                "application/json",
+              "X-Shopify-Access-Token": TOKEN,
+              "Content-Type": "application/json",
             },
           }
         );
 
         console.log(
-          `Updated ${variant.id} → ₹${finalPrice}`
+          `Updated Variant ${variant.id} → ₹${finalPrice}`
         );
       }
     }
 
-    res.send("Website Prices Updated ✅");
+    res.send("All Prices Updated ✅");
 
   } catch (err) {
     console.error(err.response?.data || err);
@@ -159,5 +157,5 @@ app.post("/update-prices", async (req, res) => {
 /* ===================================================== */
 
 app.listen(3000, () => {
-  console.log("Server running");
+  console.log("Server running on port 3000");
 });
