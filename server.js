@@ -1,3 +1,7 @@
+/* =========================================================
+   IMPORTS
+========================================================= */
+
 import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
@@ -6,17 +10,29 @@ import { fileURLToPath } from "url";
 
 dotenv.config();
 
+/* =========================================================
+   APP INIT
+========================================================= */
+
 const app = express();
 app.use(express.json());
 
-/* ---------- PATH ---------- */
+/* =========================================================
+   PATH FIX (ES MODULE SUPPORT)
+========================================================= */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/* =========================================================
+   STATIC UI SERVE
+========================================================= */
+
 app.use(express.static(path.join(__dirname, "public")));
 
-/* ---------- EMBED FIX ---------- */
+/* =========================================================
+   EMBEDDED APP IFRAME FIX
+========================================================= */
 
 app.use((req, res, next) => {
   res.setHeader(
@@ -26,14 +42,16 @@ app.use((req, res, next) => {
   next();
 });
 
-/* ---------- ENV ---------- */
+/* =========================================================
+   ENV VARIABLES
+========================================================= */
 
 const SHOP = process.env.SHOP;
 const TOKEN = process.env.SHOPIFY_TOKEN;
 
-/* =====================================================
-   ROOT UI
-===================================================== */
+/* =========================================================
+   ROOT ROUTE → LOAD UI
+========================================================= */
 
 app.get("/", (req, res) => {
   res.sendFile(
@@ -41,9 +59,9 @@ app.get("/", (req, res) => {
   );
 });
 
-/* =====================================================
-   GET PRODUCTS
-===================================================== */
+/* =========================================================
+   GET ALL PRODUCTS
+========================================================= */
 
 async function getProducts() {
 
@@ -59,9 +77,9 @@ async function getProducts() {
   return res.data.products;
 }
 
-/* =====================================================
-   GET METAFIELDS
-===================================================== */
+/* =========================================================
+   GET VARIANT METAFIELDS
+========================================================= */
 
 async function getMetafields(variantId) {
 
@@ -77,13 +95,16 @@ async function getMetafields(variantId) {
   return res.data.metafields;
 }
 
-/* =====================================================
-   UPDATE PRICE
-===================================================== */
+/* =========================================================
+   UPDATE PRICES (GOLD ONLY)
+========================================================= */
 
 app.post("/update-prices", async (req, res) => {
 
   const { goldRate } = req.body;
+
+  if (!goldRate)
+    return res.send("Gold rate missing");
 
   try {
 
@@ -92,6 +113,8 @@ app.post("/update-prices", async (req, res) => {
     for (const product of products) {
 
       for (const variant of product.variants) {
+
+        /* ---------- METAFIELDS ---------- */
 
         const metafields =
           await getMetafields(variant.id);
@@ -109,12 +132,12 @@ app.post("/update-prices", async (req, res) => {
           }
         });
 
-        /* ---------- EXISTING PRICE ---------- */
+        /* ---------- BASE PRICE ---------- */
 
         const basePrice =
           parseFloat(variant.price);
 
-        /* ---------- CALC ---------- */
+        /* ---------- CALCULATION ---------- */
 
         const goldValue =
           goldWeight * goldRate;
@@ -122,7 +145,7 @@ app.post("/update-prices", async (req, res) => {
         const finalPrice =
           basePrice + goldValue;
 
-        /* ---------- UPDATE ---------- */
+        /* ---------- UPDATE VARIANT ---------- */
 
         await axios.put(
           `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
@@ -146,16 +169,20 @@ app.post("/update-prices", async (req, res) => {
       }
     }
 
-    res.send("All Prices Updated ✅");
+    res.send("All Website Prices Updated ✅");
 
   } catch (err) {
     console.error(err.response?.data || err);
-    res.status(500).send("Error updating");
+    res.status(500).send("Price update error");
   }
 });
 
-/* ===================================================== */
+/* =========================================================
+   SERVER START
+========================================================= */
 
 app.listen(3000, () => {
+  console.log("=================================");
   console.log("Server running on port 3000");
+  console.log("=================================");
 });
