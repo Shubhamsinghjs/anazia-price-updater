@@ -49,6 +49,11 @@ async function updateVariant(variantId, newPrice, retry = 0) {
   }
 }
 
+app.use((req, res, next) => {
+  res.setHeader("Content-Security-Policy", "frame-ancestors https://admin.shopify.com https://*.myshopify.com");
+  next();
+});
+
 app.post("/update-price", async (req, res) => {
   const goldPrice = parseFloat(req.body.goldPrice);
 
