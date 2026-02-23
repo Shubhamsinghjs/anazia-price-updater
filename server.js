@@ -34,16 +34,13 @@ const TOKEN = process.env.SHOPIFY_TOKEN;
 /* ROOT UI */
 
 app.get("/", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "public/index.html")
-  );
+  res.sendFile(path.join(__dirname, "public/index.html"));
 });
 
 /* GET PRODUCTS */
 
 async function getProducts() {
-
-  const res = await axios.get(
+  const response = await axios.get(
     `https://${SHOP}/admin/api/2023-10/products.json`,
     {
       headers: {
@@ -52,14 +49,13 @@ async function getProducts() {
     }
   );
 
-  return res.data.products;
+  return response.data.products;
 }
 
 /* GET PRODUCT METAFIELDS */
 
 async function getProductMetafields(productId) {
-
-  const res = await axios.get(
+  const response = await axios.get(
     `https://${SHOP}/admin/api/2023-10/products/${productId}/metafields.json`,
     {
       headers: {
@@ -68,53 +64,36 @@ async function getProductMetafields(productId) {
     }
   );
 
-  return res.data.metafields;
+  return response.data.metafields;
 }
 
 /* UPDATE PRICE */
 
 app.post("/update-prices", async (req, res) => {
-
   const { goldRate } = req.body;
 
-  try {
+  if (!goldRate) {
+    return res.status(400).send("Gold rate required");
+  }
 
+  try {
     const products = await getProducts();
 
     for (const product of products) {
-
-      /* PRODUCT METAFIELD FETCH */
-
-      const metafields =
-        await getProductMetafields(product.id);
+      const metafields = await getProductMetafields(product.id);
 
       let goldWeight = 0;
 
       metafields.forEach((mf) => {
-
-        if (
-          mf.namespace === "custom" &&
-          mf.key === "gold_weight"
-        ) {
-          goldWeight =
-            parseFloat(mf.value);
+        if (mf.namespace === "custom" && mf.key === "gold_weight") {
+          goldWeight = parseFloat(mf.value);
         }
       });
 
-      /* LOOP VARIANTS */
-
       for (const variant of product.variants) {
-
-        const basePrice =
-          parseFloat(variant.price);
-
-        const goldValue =
-          goldWeight * goldRate;
-
-        const finalPrice =
-          basePrice + goldValue;
-
-        /* UPDATE */
+        const basePrice = parseFloat(variant.price);
+        const goldValue = goldWeight * goldRate;
+        const finalPrice = basePrice + goldValue;
 
         await axios.put(
           `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
@@ -132,22 +111,21 @@ app.post("/update-prices", async (req, res) => {
           }
         );
 
-        console.log(
-          `Updated ${variant.id} → ₹${finalPrice}`
-        );
+        console.log(`Updated ${variant.id} → ₹${finalPrice}`);
       }
     }
 
     res.send("Prices Updated Successfully ✅");
-
   } catch (err) {
     console.error(err.response?.data || err);
-    res.status(500).send("Error updating");
+    res.status(500).send("Error updating prices");
   }
 });
 
 /* SERVER */
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
