@@ -4,16 +4,18 @@ const axios = require("axios");
 
 const app = express();
 app.use(express.json());
-
-// ROOT ROUTE FOR SHOPIFY EMBED
-app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/public/index.html");
-});
-
 app.use(express.urlencoded({ extended: true }));
 
 const SHOP = process.env.SHOP;
 const TOKEN = process.env.SHOPIFY_TOKEN;
+const PORT = process.env.PORT || 3000;
+
+/* ===============================
+   ROOT
+================================ */
+app.get("/", (req, res) => {
+  res.send("ANAZIA Price Updater Running 🚀");
+});
 
 /* ===============================
    UPDATE PRICE ROUTE
@@ -26,15 +28,12 @@ app.post("/update-price", async (req, res) => {
       return res.json({ message: "Invalid Gold Price" });
     }
 
-    console.log("==================================");
-    console.log("Gold Price Entered:", goldPrice);
-    console.log("==================================");
+    console.log("Gold Price:", goldPrice);
 
     let updatedCount = 0;
     let nextPageUrl = `https://${SHOP}/admin/api/2024-01/products.json?limit=250`;
 
     while (nextPageUrl) {
-
       const productResponse = await axios.get(nextPageUrl, {
         headers: {
           "X-Shopify-Access-Token": TOKEN
@@ -45,34 +44,39 @@ app.post("/update-price", async (req, res) => {
 
       for (let product of products) {
 
-        // Fetch product metafields
+        // Fetch metafield
         const metafieldRes = await axios.get(
           `https://${SHOP}/admin/api/2024-01/products/${product.id}/metafields.json`,
           {
-            headers: {
-              "X-Shopify-Access-Token": TOKEN
-            }
+            headers: { "X-Shopify-Access-Token": TOKEN }
           }
         );
 
         let weight = 0;
 
-        for (let meta of metafieldRes.data.metafields) {
-          if (meta.namespace === "custom" && meta.key === "gold_weight") {
-            weight = parseFloat(meta.value);
-          }
+        const goldMeta = metafieldRes.data.metafields.find(
+          m => m.namespace === "custom" && m.key === "gold_weight"
+        );
+
+        if (goldMeta) {
+          weight = parseFloat(goldMeta.value);
         }
 
         if (!weight || weight <= 0) {
-          console.log(`Skipped Product ${product.id} (No weight metafield)`);
+          console.log(`Skipped ${product.id} (No weight)`);
           continue;
         }
 
+        const calculatedGoldValue = goldPrice * weight;
+
         for (let variant of product.variants) {
 
-          let basePrice = parseFloat(variant.price);
-          let calculatedGoldValue = goldPrice * weight;
-          let finalPrice = basePrice + calculatedGoldValue;
+          // IMPORTANT FIX:
+          const baseComparePrice = variant.compare_at_price
+            ? parseFloat(variant.compare_at_price)
+            : parseFloat(variant.price);
+
+          const finalPrice = baseComparePrice + calculatedGoldValue;
 
           await axios.put(
             `https://${SHOP}/admin/api/2024-01/variants/${variant.id}.json`,
@@ -91,14 +95,16 @@ app.post("/update-price", async (req, res) => {
           );
 
           console.log(
-            `Updated Variant ${variant.id} | Base: ${basePrice} | Weight: ${weight} | Gold: ${goldPrice} | Final: ${finalPrice}`
+            `Updated Variant ${variant.id} → ${finalPrice.toFixed(2)}`
           );
 
           updatedCount++;
+
+          // RATE LIMIT SAFE DELAY
+          await new Promise(resolve => setTimeout(resolve, 600));
         }
       }
 
-      // Pagination check
       const linkHeader = productResponse.headers.link;
 
       if (linkHeader && linkHeader.includes('rel="next"')) {
@@ -109,21 +115,25 @@ app.post("/update-price", async (req, res) => {
       }
     }
 
-    console.log("==================================");
     console.log("TOTAL UPDATED:", updatedCount);
-    console.log("==================================");
 
-    res.json({ message: "Prices Updated Successfully" });
+    res.json({
+      success: true,
+      updated: updatedCount
+    });
 
   } catch (error) {
     console.error("ERROR:", error.response?.data || error.message);
-    res.status(500).json({ message: "Error Updating Prices" });
+    res.status(500).json({
+      message: "Error Updating Prices",
+      error: error.response?.data || error.message
+    });
   }
 });
 
 /* ===============================
    SERVER START
 ================================ */
-app.listen(3000, () => {
-  console.log("🚀 Server running on port 3000");
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
