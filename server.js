@@ -10,16 +10,12 @@ const SHOP = process.env.SHOP;
 const TOKEN = process.env.SHOPIFY_TOKEN;
 const PORT = process.env.PORT || 3000;
 
-/* ===============================
-   ROOT
-================================ */
+/* ROOT */
 app.get("/", (req, res) => {
-  res.send("ANAZIA Price Updater Running 🚀");
+  res.send("ANAZIA Gold Price Engine Running 💎");
 });
 
-/* ===============================
-   UPDATE PRICE ROUTE
-================================ */
+/* UPDATE PRICE */
 app.post("/update-price", async (req, res) => {
   try {
     const goldPrice = parseFloat(req.body.goldPrice);
@@ -28,23 +24,21 @@ app.post("/update-price", async (req, res) => {
       return res.json({ message: "Invalid Gold Price" });
     }
 
-    console.log("Gold Price:", goldPrice);
+    console.log("Gold Price Entered:", goldPrice);
 
     let updatedCount = 0;
     let nextPageUrl = `https://${SHOP}/admin/api/2024-01/products.json?limit=250`;
 
     while (nextPageUrl) {
       const productResponse = await axios.get(nextPageUrl, {
-        headers: {
-          "X-Shopify-Access-Token": TOKEN
-        }
+        headers: { "X-Shopify-Access-Token": TOKEN }
       });
 
       const products = productResponse.data.products;
 
       for (let product of products) {
 
-        // Fetch metafield
+        // Fetch metafields
         const metafieldRes = await axios.get(
           `https://${SHOP}/admin/api/2024-01/products/${product.id}/metafields.json`,
           {
@@ -52,31 +46,25 @@ app.post("/update-price", async (req, res) => {
           }
         );
 
-        let weight = 0;
-
         const goldMeta = metafieldRes.data.metafields.find(
           m => m.namespace === "custom" && m.key === "gold_weight"
         );
 
-        if (goldMeta) {
-          weight = parseFloat(goldMeta.value);
-        }
-
-        if (!weight || weight <= 0) {
-          console.log(`Skipped ${product.id} (No weight)`);
+        if (!goldMeta) {
+          console.log(`Skipped ${product.id} (No gold_weight metafield)`);
           continue;
         }
 
-        const calculatedGoldValue = goldPrice * weight;
+        const weight = parseFloat(goldMeta.value);
+
+        if (!weight || weight <= 0) {
+          console.log(`Skipped ${product.id} (Invalid weight)`);
+          continue;
+        }
+
+        const finalPrice = goldPrice * weight;
 
         for (let variant of product.variants) {
-
-          // IMPORTANT FIX:
-          const baseComparePrice = variant.compare_at_price
-            ? parseFloat(variant.compare_at_price)
-            : parseFloat(variant.price);
-
-          const finalPrice = baseComparePrice + calculatedGoldValue;
 
           await axios.put(
             `https://${SHOP}/admin/api/2024-01/variants/${variant.id}.json`,
@@ -100,8 +88,8 @@ app.post("/update-price", async (req, res) => {
 
           updatedCount++;
 
-          // RATE LIMIT SAFE DELAY
-          await new Promise(resolve => setTimeout(resolve, 600));
+          // Rate limit safe
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
 
@@ -131,9 +119,6 @@ app.post("/update-price", async (req, res) => {
   }
 });
 
-/* ===============================
-   SERVER START
-================================ */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
