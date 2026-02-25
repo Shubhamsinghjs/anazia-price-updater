@@ -1,113 +1,123 @@
+require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
-require("dotenv").config();
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static("public"));
 
 const SHOP = process.env.SHOP;
-const TOKEN = process.env.SHOPIFY_TOKEN;
-const PORT = process.env.PORT || 3000;
+const TOKEN = process.env.TOKEN;
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function updateVariant(variantId, newPrice, retry = 0) {
+/* ===============================
+   UPDATE PRICE ROUTE
+================================ */
+app.post("/update-price", async (req, res) => {
   try {
-    await axios.put(
-      `https://${SHOP}/admin/api/2024-01/variants/${variantId}.json`,
-      {
-        variant: {
-          id: variantId,
-          price: newPrice,
-        },
-      },
-      {
-        headers: {
-          "X-Shopify-Access-Token": TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const goldPrice = parseFloat(req.body.goldPrice);
 
-    console.log(`✅ Updated ${variantId} → ₹${newPrice}`);
-    return true;
-  } catch (error) {
-    if (
-      error.response &&
-      error.response.data.errors &&
-      retry < 3
-    ) {
-      console.log(`⚠ Rate limit hit. Retrying ${variantId}...`);
-      await delay(1000);
-      return updateVariant(variantId, newPrice, retry + 1);
+    if (!goldPrice || goldPrice <= 0) {
+      return res.json({ message: "Invalid Gold Price" });
     }
 
-    console.log(`❌ Failed ${variantId}`);
-    return false;
-  }
-}
+    console.log("==================================");
+    console.log("Gold Price Entered:", goldPrice);
+    console.log("==================================");
 
-app.use((req, res, next) => {
-  res.setHeader("Content-Security-Policy", "frame-ancestors https://admin.shopify.com https://*.myshopify.com");
-  next();
-});
+    let updatedCount = 0;
+    let nextPageUrl = `https://${SHOP}/admin/api/2024-01/products.json?limit=250`;
 
-app.post("/update-price", async (req, res) => {
-  const goldPrice = parseFloat(req.body.goldPrice);
+    while (nextPageUrl) {
 
-  if (!goldPrice) {
-    return res.send("Invalid gold price");
-  }
-
-  try {
-    const response = await axios.get(
-      `https://${SHOP}/admin/api/2024-01/products.json?limit=250`,
-      {
+      const productResponse = await axios.get(nextPageUrl, {
         headers: {
-          "X-Shopify-Access-Token": TOKEN,
-        },
-      }
-    );
+          "X-Shopify-Access-Token": TOKEN
+        }
+      });
 
-    const products = response.data.products;
+      const products = productResponse.data.products;
 
-    let successCount = 0;
-    let failCount = 0;
+      for (let product of products) {
 
-    for (const product of products) {
-      for (const variant of product.variants) {
-
-        // 🔥 PRICE CALCULATION LOGIC
-        const makingCharge = 500; // example
-        const weight = 10; // replace with metafield if needed
-
-        const newPrice = (goldPrice * weight) + makingCharge;
-
-        const updated = await updateVariant(
-          variant.id,
-          newPrice.toFixed(2)
+        // Fetch product metafields
+        const metafieldRes = await axios.get(
+          `https://${SHOP}/admin/api/2024-01/products/${product.id}/metafields.json`,
+          {
+            headers: {
+              "X-Shopify-Access-Token": TOKEN
+            }
+          }
         );
 
-        if (updated) successCount++;
-        else failCount++;
+        let weight = 0;
 
-        await delay(500); // 👈 IMPORTANT FOR 300 PRODUCTS
+        for (let meta of metafieldRes.data.metafields) {
+          if (meta.namespace === "custom" && meta.key === "gold_weight") {
+            weight = parseFloat(meta.value);
+          }
+        }
+
+        if (!weight || weight <= 0) {
+          console.log(`Skipped Product ${product.id} (No weight metafield)`);
+          continue;
+        }
+
+        for (let variant of product.variants) {
+
+          let basePrice = parseFloat(variant.price);
+          let calculatedGoldValue = goldPrice * weight;
+          let finalPrice = basePrice + calculatedGoldValue;
+
+          await axios.put(
+            `https://${SHOP}/admin/api/2024-01/variants/${variant.id}.json`,
+            {
+              variant: {
+                id: variant.id,
+                price: finalPrice.toFixed(2)
+              }
+            },
+            {
+              headers: {
+                "X-Shopify-Access-Token": TOKEN,
+                "Content-Type": "application/json"
+              }
+            }
+          );
+
+          console.log(
+            `Updated Variant ${variant.id} | Base: ${basePrice} | Weight: ${weight} | Gold: ${goldPrice} | Final: ${finalPrice}`
+          );
+
+          updatedCount++;
+        }
+      }
+
+      // Pagination check
+      const linkHeader = productResponse.headers.link;
+
+      if (linkHeader && linkHeader.includes('rel="next"')) {
+        const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+        nextPageUrl = match ? match[1] : null;
+      } else {
+        nextPageUrl = null;
       }
     }
 
-    console.log(`🎉 Done! Success: ${successCount}, Failed: ${failCount}`);
+    console.log("==================================");
+    console.log("TOTAL UPDATED:", updatedCount);
+    console.log("==================================");
 
-    res.send(
-      `Updated Successfully!<br>Success: ${successCount}<br>Failed: ${failCount}`
-    );
+    res.json({ message: "Prices Updated Successfully" });
+
   } catch (error) {
-    console.log(error.message);
-    res.send("Error updating prices");
+    console.error("ERROR:", error.response?.data || error.message);
+    res.status(500).json({ message: "Error Updating Prices" });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+/* ===============================
+   SERVER START
+================================ */
+app.listen(3000, () => {
+  console.log("🚀 Server running on port 3000");
 });
