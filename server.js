@@ -13,7 +13,7 @@ app.get("/", (req, res) => {
 app.use(express.urlencoded({ extended: true }));
 
 const SHOP = process.env.SHOP;
-const TOKEN = process.env.TOKEN;
+const TOKEN = process.env.SHOPIFY_TOKEN;
 
 /* ===============================
    UPDATE PRICE ROUTE
