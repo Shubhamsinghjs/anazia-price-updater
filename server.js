@@ -4,6 +4,12 @@ const axios = require("axios");
 
 const app = express();
 app.use(express.json());
+
+// ROOT ROUTE FOR SHOPIFY EMBED
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/public/index.html");
+});
+
 app.use(express.urlencoded({ extended: true }));
 
 const SHOP = process.env.SHOP;
