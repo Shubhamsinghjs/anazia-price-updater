@@ -1,124 +1,98 @@
 require("dotenv").config();
 const express = require("express");
-const axios = require("axios");
+const fetch = require("node-fetch");
 
 const app = express();
-app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-const SHOP = process.env.SHOP;
-const TOKEN = process.env.SHOPIFY_TOKEN;
-const PORT = process.env.PORT || 3000;
+/* ---------------- PANEL ---------------- */
 
-/* ROOT */
 app.get("/", (req, res) => {
-  res.send("ANAZIA Gold Price Engine Running 💎");
+  res.send(`
+  <h2>Gold Price Updater</h2>
+  <form method="POST" action="/update">
+    <input name="gold" placeholder="Enter Gold Rate ₹/gram" required />
+    <button>Update Prices</button>
+  </form>
+  `);
 });
 
-/* UPDATE PRICE */
-app.post("/update-price", async (req, res) => {
+/* ---------------- PRICE UPDATE ---------------- */
+
+app.post("/update", async (req, res) => {
   try {
-    const goldPrice = parseFloat(req.body.goldPrice);
+    const goldRate = Number(req.body.gold);
 
-    if (!goldPrice || goldPrice <= 0) {
-      return res.json({ message: "Invalid Gold Price" });
-    }
+    const SHOP = process.env.SHOP;
+    const TOKEN = process.env.SHOPIFY_TOKEN;
 
-    console.log("Gold Price Entered:", goldPrice);
+    const productsRes = await fetch(
+      `https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
+      {
+        headers: {
+          "X-Shopify-Access-Token": TOKEN,
+        },
+      }
+    );
 
-    let updatedCount = 0;
-    let nextPageUrl = `https://${SHOP}/admin/api/2024-01/products.json?limit=250`;
+    const productsData = await productsRes.json();
+    const products = productsData.products;
 
-    while (nextPageUrl) {
-      const productResponse = await axios.get(nextPageUrl, {
-        headers: { "X-Shopify-Access-Token": TOKEN }
+    for (const product of products) {
+      const metafieldsRes = await fetch(
+        `https://${SHOP}/admin/api/2023-10/products/${product.id}/metafields.json`,
+        {
+          headers: {
+            "X-Shopify-Access-Token": TOKEN,
+          },
+        }
+      );
+
+      const metafieldsData = await metafieldsRes.json();
+
+      let goldWeight = 0;
+
+      metafieldsData.metafields.forEach((m) => {
+        if (m.key === "gold_weight") {
+          goldWeight = Number(m.value);
+        }
       });
 
-      const products = productResponse.data.products;
+      if (!goldWeight) continue;
 
-      for (let product of products) {
+      const finalPrice = (goldWeight * goldRate).toFixed(2);
 
-        // Fetch metafields
-        const metafieldRes = await axios.get(
-          `https://${SHOP}/admin/api/2024-01/products/${product.id}/metafields.json`,
+      for (const variant of product.variants) {
+        await fetch(
+          `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
           {
-            headers: { "X-Shopify-Access-Token": TOKEN }
-          }
-        );
-
-        const goldMeta = metafieldRes.data.metafields.find(
-          m => m.namespace === "custom" && m.key === "gold_weight"
-        );
-
-        if (!goldMeta) {
-          console.log(`Skipped ${product.id} (No gold_weight metafield)`);
-          continue;
-        }
-
-        const weight = parseFloat(goldMeta.value);
-
-        if (!weight || weight <= 0) {
-          console.log(`Skipped ${product.id} (Invalid weight)`);
-          continue;
-        }
-
-        const finalPrice = goldPrice * weight;
-
-        for (let variant of product.variants) {
-
-          await axios.put(
-            `https://${SHOP}/admin/api/2024-01/variants/${variant.id}.json`,
-            {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": TOKEN,
+            },
+            body: JSON.stringify({
               variant: {
                 id: variant.id,
-                price: finalPrice.toFixed(2)
-              }
-            },
-            {
-              headers: {
-                "X-Shopify-Access-Token": TOKEN,
-                "Content-Type": "application/json"
-              }
-            }
-          );
-
-          console.log(
-            `Updated Variant ${variant.id} → ${finalPrice.toFixed(2)}`
-          );
-
-          updatedCount++;
-
-          // Rate limit safe
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-
-      const linkHeader = productResponse.headers.link;
-
-      if (linkHeader && linkHeader.includes('rel="next"')) {
-        const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-        nextPageUrl = match ? match[1] : null;
-      } else {
-        nextPageUrl = null;
+                price: finalPrice,
+              },
+            }),
+          }
+        );
       }
     }
 
-    console.log("TOTAL UPDATED:", updatedCount);
-
-    res.json({
-      success: true,
-      updated: updatedCount
-    });
-
-  } catch (error) {
-    console.error("ERROR:", error.response?.data || error.message);
-    res.status(500).json({
-      message: "Error Updating Prices",
-      error: error.response?.data || error.message
-    });
+    res.send("✅ Gold Prices Updated Successfully");
+  } catch (err) {
+    console.log(err);
+    res.send("Error updating prices");
   }
 });
 
+/* ---------------- SERVER ---------------- */
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log("ANAZIA GOLD SERVER RUNNING");
 });
