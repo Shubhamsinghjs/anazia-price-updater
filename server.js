@@ -54,7 +54,7 @@ app.post("/update", async (req, res) => {
       let goldWeight = 0;
 
       metafieldsData.metafields.forEach((m) => {
-        if (m.key === "gold_weight") {
+        if (m.namespace === "custom" && m.key === "gold_weight") {
           goldWeight = Number(m.value);
         }
       });
