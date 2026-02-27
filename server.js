@@ -6,93 +6,87 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-/* ---------------- PANEL ---------------- */
+const SHOP = process.env.SHOPIFY_STORE;
+const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+const PORT = process.env.PORT || 3000;
+
+/* -------- PANEL -------- */
 
 app.get("/", (req, res) => {
   res.send(`
-  <h2>Gold Price Updater</h2>
-  <form method="POST" action="/update">
-    <input name="gold" placeholder="Enter Gold Rate ₹/gram" required />
-    <button>Update Prices</button>
-  </form>
+    <h2>Gold Price Updater</h2>
+    <form method="POST" action="/update">
+      <input name="gold" placeholder="Enter Gold Rate ₹/gram" required />
+      <button>Update Prices</button>
+    </form>
   `);
 });
 
-/* ---------------- PRICE UPDATE ---------------- */
+/* -------- PRICE UPDATE -------- */
 
 app.post("/update", async (req, res) => {
   try {
-    const goldRate = Number(req.body.gold);
+    const goldRate = parseFloat(req.body.gold);
+    if (!goldRate) return res.send("Invalid gold rate");
 
-    const SHOP = process.env.SHOP;
-    const TOKEN = process.env.SHOPIFY_TOKEN;
+    console.log("Gold Price Entered:", goldRate);
 
-    const productsRes = await fetch(
+    // Fetch Products
+    const response = await fetch(
       `https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
       {
+        method: "GET",
         headers: {
           "X-Shopify-Access-Token": TOKEN,
+          "Content-Type": "application/json",
         },
       }
     );
 
-    const productsData = await productsRes.json();
-    const products = productsData.products;
+    const data = await response.json();
+    console.log("SHOPIFY RESPONSE:", data);
 
-    for (const product of products) {
-      const metafieldsRes = await fetch(
-        `https://${SHOP}/admin/api/2023-10/products/${product.id}/metafields.json`,
-        {
-          headers: {
-            "X-Shopify-Access-Token": TOKEN,
-          },
-        }
-      );
+    if (!data.products) {
+      console.log("No products found or API error");
+      return res.send("Error fetching products");
+    }
 
-      const metafieldsData = await metafieldsRes.json();
+    const products = data.products;
 
-      let goldWeight = 0;
+    for (let product of products) {
+      for (let variant of product.variants) {
+        const newPrice = goldRate; // simple demo logic
 
-      metafieldsData.metafields.forEach((m) => {
-        if (m.namespace === "custom" && m.key === "gold_weight") {
-          goldWeight = Number(m.value);
-        }
-      });
-
-      if (!goldWeight) continue;
-
-      const finalPrice = (goldWeight * goldRate).toFixed(2);
-
-      for (const variant of product.variants) {
         await fetch(
           `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
           {
             method: "PUT",
             headers: {
-              "Content-Type": "application/json",
               "X-Shopify-Access-Token": TOKEN,
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
               variant: {
                 id: variant.id,
-                price: finalPrice,
+                price: newPrice,
               },
             }),
           }
         );
+
+        console.log(`Updated Variant ${variant.id} → ${newPrice}`);
       }
     }
 
-    res.send("✅ Gold Prices Updated Successfully");
+    res.send("Prices updated successfully ✅");
   } catch (err) {
-    console.log(err);
+    console.log("ERROR:", err);
     res.send("Error updating prices");
   }
 });
 
-/* ---------------- SERVER ---------------- */
+/* -------- SERVER -------- */
 
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("ANAZIA GOLD SERVER RUNNING");
+  console.log("ANAZIA GOLD SERVER RUNNING on port", PORT);
 });
