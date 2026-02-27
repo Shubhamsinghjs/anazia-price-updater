@@ -39,12 +39,11 @@ app.post("/update", async (req, res) => {
       return res.send("❌ Invalid gold rate");
     }
 
-    console.log("💰 Gold Price Entered:", goldRate);
+    console.log("💰 Gold Rate:", goldRate);
 
     const response = await fetch(
       `https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
       {
-        method: "GET",
         headers: {
           "X-Shopify-Access-Token": TOKEN,
           "Content-Type": "application/json",
@@ -58,13 +57,13 @@ app.post("/update", async (req, res) => {
       return res.send("❌ Error fetching products");
     }
 
-    const products = data.products;
-
     let updatedCount = 0;
 
-    for (const product of products) {
+    for (const product of data.products) {
 
-      const metafieldResponse = await fetch(
+      /* ----- Fetch All Metafields ----- */
+
+      const metafieldRes = await fetch(
         `https://${SHOP}/admin/api/2023-10/products/${product.id}/metafields.json`,
         {
           headers: {
@@ -74,33 +73,36 @@ app.post("/update", async (req, res) => {
         }
       );
 
-      const metafieldData = await metafieldResponse.json();
+      const metafieldData = await metafieldRes.json();
 
       const goldWeightField = metafieldData.metafields?.find(
-        (m) => m.namespace === "custom" && m.key === "gold_weight"
+        m => m.namespace === "custom" && m.key === "gold_weight"
+      );
+
+      const basePriceField = metafieldData.metafields?.find(
+        m => m.namespace === "custom" && m.key === "base_price"
       );
 
       const goldWeight = goldWeightField
         ? parseFloat(goldWeightField.value)
         : 0;
 
-      if (!goldWeight) continue;
+      const basePrice = basePriceField
+        ? parseFloat(basePriceField.value)
+        : 0;
+
+      if (!goldWeight || !basePrice) {
+        console.log(`⚠ Missing metafield for product ${product.id}`);
+        continue;
+      }
+
+      const finalPrice = basePrice + (goldRate * goldWeight);
 
       if (!Array.isArray(product.variants)) continue;
 
-      /* -------- FIXED CALCULATION -------- */
-
-      const originalBasePrice =
-        parseFloat(product.variants[0].compare_at_price) ||
-        parseFloat(product.variants[0].price) ||
-        0;
-
-      const goldValue = goldRate * goldWeight;
-      const finalPrice = originalBasePrice + goldValue;
-
       for (const variant of product.variants) {
 
-        const updateResponse = await fetch(
+        const updateRes = await fetch(
           `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
           {
             method: "PUT",
@@ -117,14 +119,18 @@ app.post("/update", async (req, res) => {
           }
         );
 
-        if (!updateResponse.ok) continue;
+        if (!updateRes.ok) {
+          const err = await updateRes.text();
+          console.log(`❌ Failed Variant ${variant.id}`, err);
+          continue;
+        }
 
         updatedCount++;
-
         console.log(
-          `✅ Variant ${variant.id} | Weight: ${goldWeight}g | Final Price: ${finalPrice}`
+          `✅ Variant ${variant.id} | Weight: ${goldWeight} | Base: ${basePrice} | Final: ${finalPrice}`
         );
 
+        /* Rate limit protection */
         await new Promise(resolve => setTimeout(resolve, 600));
       }
     }
