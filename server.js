@@ -107,15 +107,18 @@ app.post("/update", async (req, res) => {
 
       if (!Array.isArray(product.variants)) continue;
 
+      /* ---- FIXED LOGIC: same base price for all variants ---- */
+
+      const baseProductPrice =
+        parseFloat(product.variants[0].price) || 0;
+
+      const goldValue = goldRate * goldWeight;
+
+      const finalPrice = goldValue + baseProductPrice;
+
       /* -------- LOOP VARIANTS -------- */
 
       for (const variant of product.variants) {
-
-        const currentPrice = parseFloat(variant.price) || 0;
-
-        const goldValue = goldRate * goldWeight;
-
-        const finalPrice = goldValue + currentPrice;
 
         const updateResponse = await fetch(
           `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
@@ -141,11 +144,12 @@ app.post("/update", async (req, res) => {
         }
 
         updatedCount++;
+
         console.log(
           `✅ Variant ${variant.id} | Weight: ${goldWeight}g | Final Price: ${finalPrice}`
         );
 
-        /* ---- Small delay to avoid rate limit ---- */
+        /* ---- Delay to avoid rate limit ---- */
         await new Promise(resolve => setTimeout(resolve, 600));
       }
     }
