@@ -11,17 +11,18 @@ const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
 if (!SHOP || !TOKEN) {
-  console.log("❌ Missing ENV variables");
+  console.log("❌ Missing ENV");
   process.exit(1);
 }
 
 app.get("/", (req, res) => {
   res.send(`
-    <h2>ANAZIA GOLD FINAL LOGIC</h2>
+    <h2>ANAZIA GOLD – MANUAL MODE</h2>
     <form method="POST" action="/update">
-      <input name="gold" placeholder="Enter Gold Rate ₹/gram" required />
-      <button>Update Prices</button>
+      <input name="gold" placeholder="Gold Rate ₹/gram" required />
+      <button>RUN UPDATE</button>
     </form>
+    <p>⚠ Runs ONLY when you click button</p>
   `);
 });
 
@@ -31,10 +32,8 @@ app.post("/update", async (req, res) => {
     if (!goldRate || goldRate <= 0)
       return res.send("❌ Invalid gold rate");
 
-    console.log("💰 Gold Rate:", goldRate);
-
     let pageInfo = null;
-    let updatedCount = 0;
+    let updated = 0;
 
     do {
       const url = pageInfo
@@ -51,17 +50,14 @@ app.post("/update", async (req, res) => {
       const data = await response.json();
       const products = data.products || [];
 
-      const linkHeader = response.headers.get("link");
-      pageInfo = null;
-
-      if (linkHeader && linkHeader.includes('rel="next"')) {
-        const match = linkHeader.match(/page_info=([^&>]+)/);
-        if (match) pageInfo = match[1];
-      }
+      const link = response.headers.get("link");
+      pageInfo = link?.includes('rel="next"')
+        ? link.match(/page_info=([^&>]+)/)?.[1]
+        : null;
 
       for (const product of products) {
 
-        /* 🔹 PRODUCT LEVEL GOLD WEIGHT */
+        // 🔹 PRODUCT GOLD WEIGHT
         const metaRes = await fetch(
           `https://${SHOP}/admin/api/2023-10/products/${product.id}/metafields.json`,
           {
@@ -72,27 +68,22 @@ app.post("/update", async (req, res) => {
           }
         );
 
-        const metaData = await metaRes.json();
-
-        const weightField = metaData.metafields?.find(
+        const meta = await metaRes.json();
+        const weightField = meta.metafields?.find(
           m => m.namespace === "custom" && m.key === "gold_weight"
         );
 
-        const goldWeight = weightField
-          ? parseFloat(weightField.value)
-          : 0;
-
+        const goldWeight = weightField ? parseFloat(weightField.value) : 0;
         if (!goldWeight) continue;
 
         for (const variant of product.variants) {
 
-          /* 🔹 Lock Base Price */
+          // 🔒 BASE PRICE LOCK
           let basePrice = parseFloat(variant.compare_at_price);
 
           if (!basePrice) {
             basePrice = parseFloat(variant.price);
 
-            // store base price permanently
             await fetch(
               `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
               {
@@ -111,10 +102,10 @@ app.post("/update", async (req, res) => {
             );
           }
 
-          /* 🔹 FINAL FORMULA */
-          const finalPrice = basePrice + (goldRate * goldWeight);
+          const finalPrice =
+            basePrice + (goldRate * goldWeight);
 
-          const updateRes = await fetch(
+          await fetch(
             `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
             {
               method: "PUT",
@@ -131,32 +122,25 @@ app.post("/update", async (req, res) => {
             }
           );
 
-          if (!updateRes.ok) {
-            const err = await updateRes.text();
-            console.log("❌ Failed:", err);
-            continue;
-          }
-
-          updatedCount++;
-
           console.log(
-            `✅ Variant ${variant.id} | Base: ${basePrice} | Weight: ${goldWeight} | Final: ${finalPrice}`
+            `✅ Variant ${variant.id} | Base ${basePrice} | Weight ${goldWeight} | Final ${finalPrice}`
           );
 
-          await new Promise(r => setTimeout(r, 350));
+          updated++;
+          await new Promise(r => setTimeout(r, 300));
         }
       }
 
     } while (pageInfo);
 
-    res.send(`✅ Successfully Updated ${updatedCount} Variants`);
+    res.send(`✅ DONE. Updated ${updated} variants`);
 
-  } catch (err) {
-    console.log("🔥 ERROR:", err);
-    res.send("❌ Update failed");
+  } catch (e) {
+    console.log(e);
+    res.send("❌ Error");
   }
 });
 
 app.listen(PORT, () => {
-  console.log("🚀 ANAZIA GOLD SERVER RUNNING");
+  console.log("🚀 ANAZIA GOLD MANUAL SERVER RUNNING");
 });
