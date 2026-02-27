@@ -76,11 +76,15 @@ app.post("/update", async (req, res) => {
       const metafieldData = await metafieldRes.json();
 
       const goldWeightField = metafieldData.metafields?.find(
-        m => m.namespace === "custom" && m.key === "gold_weight"
+        m =>
+          m.namespace.toLowerCase() === "custom" &&
+          m.key.toLowerCase() === "gold_weight"
       );
 
       const basePriceField = metafieldData.metafields?.find(
-        m => m.namespace === "custom" && m.key === "base_price"
+        m =>
+          m.namespace.toLowerCase() === "custom" &&
+          m.key.toLowerCase() === "base_price"
       );
 
       const goldWeight = goldWeightField
