@@ -10,7 +10,14 @@ const SHOP = process.env.SHOPIFY_STORE;
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
-/* -------- PANEL -------- */
+/* ---------------- VALIDATION ---------------- */
+
+if (!SHOP || !TOKEN) {
+  console.log("❌ Missing SHOPIFY_STORE or SHOPIFY_ACCESS_TOKEN in .env");
+  process.exit(1);
+}
+
+/* ---------------- PANEL ---------------- */
 
 app.get("/", (req, res) => {
   res.send(`
@@ -22,16 +29,20 @@ app.get("/", (req, res) => {
   `);
 });
 
-/* -------- PRICE UPDATE -------- */
+/* ---------------- PRICE UPDATE ---------------- */
 
 app.post("/update", async (req, res) => {
   try {
     const goldRate = parseFloat(req.body.gold);
-    if (!goldRate) return res.send("Invalid gold rate");
 
-    console.log("Gold Price Entered:", goldRate);
+    if (!goldRate || goldRate <= 0) {
+      return res.send("❌ Invalid gold rate");
+    }
 
-    // Fetch Products
+    console.log("💰 Gold Price Entered:", goldRate);
+
+    /* -------- FETCH PRODUCTS -------- */
+
     const response = await fetch(
       `https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
       {
@@ -43,21 +54,36 @@ app.post("/update", async (req, res) => {
       }
     );
 
-    const data = await response.json();
-    console.log("SHOPIFY RESPONSE:", data);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log("❌ Shopify API Error:", errorText);
+      return res.send("❌ Error fetching products (API rejected request)");
+    }
 
-    if (!data.products) {
-      console.log("No products found or API error");
-      return res.send("Error fetching products");
+    const data = await response.json();
+
+    if (!Array.isArray(data.products)) {
+      console.log("❌ Invalid Products Response:", data);
+      return res.send("❌ Error fetching products");
     }
 
     const products = data.products;
 
-    for (let product of products) {
-      for (let variant of product.variants) {
-        const newPrice = goldRate; // simple demo logic
+    if (products.length === 0) {
+      return res.send("⚠ No products found");
+    }
 
-        await fetch(
+    console.log(`📦 Total Products Fetched: ${products.length}`);
+
+    /* -------- UPDATE VARIANTS -------- */
+
+    let updatedCount = 0;
+
+    for (const product of products) {
+      if (!Array.isArray(product.variants)) continue;
+
+      for (const variant of product.variants) {
+        const updateResponse = await fetch(
           `https://${SHOP}/admin/api/2023-10/variants/${variant.id}.json`,
           {
             method: "PUT",
@@ -68,25 +94,34 @@ app.post("/update", async (req, res) => {
             body: JSON.stringify({
               variant: {
                 id: variant.id,
-                price: newPrice,
+                price: goldRate,
               },
             }),
           }
         );
 
-        console.log(`Updated Variant ${variant.id} → ${newPrice}`);
+        if (!updateResponse.ok) {
+          const errText = await updateResponse.text();
+          console.log(`❌ Failed Variant ${variant.id}:`, errText);
+          continue;
+        }
+
+        updatedCount++;
+        console.log(`✅ Updated Variant ${variant.id}`);
       }
     }
 
-    res.send("Prices updated successfully ✅");
+    console.log(`🎯 Total Variants Updated: ${updatedCount}`);
+
+    res.send(`✅ Successfully Updated ${updatedCount} Variants`);
   } catch (err) {
-    console.log("ERROR:", err);
-    res.send("Error updating prices");
+    console.log("🔥 SERVER ERROR:", err);
+    res.send("❌ Error updating prices");
   }
 });
 
-/* -------- SERVER -------- */
+/* ---------------- SERVER ---------------- */
 
 app.listen(PORT, () => {
-  console.log("ANAZIA GOLD SERVER RUNNING on port", PORT);
+  console.log("🚀 ANAZIA GOLD SERVER RUNNING on port", PORT);
 });
