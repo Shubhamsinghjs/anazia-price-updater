@@ -27,6 +27,7 @@ app.get("/", (req, res) => {
       .product { border:1px solid #ccc; padding:10px; margin:10px 0; }
       .variant { background:#f9f9f9; padding:10px; margin:5px 0; }
       input { padding:4px; margin:4px; width:120px; }
+      .pagination button { margin:5px; padding:5px 10px; }
     </style>
   </head>
   <body>
@@ -49,9 +50,13 @@ app.get("/", (req, res) => {
   <div id="products" class="section">
     <h2>Products</h2>
     <div id="productContainer">Loading...</div>
+    <div id="pagination"></div>
   </div>
 
 <script>
+
+let currentPage = 1;
+
 function showTab(id) {
   document.getElementById("pricing").classList.remove("active");
   document.getElementById("products").classList.remove("active");
@@ -68,12 +73,13 @@ async function saveGold() {
   document.getElementById("goldSaved").innerText = "Saved!";
 }
 
-async function loadProducts() {
-  const res = await fetch('/api/products');
-  const products = await res.json();
+async function loadProducts(page = 1) {
+  currentPage = page;
+  const res = await fetch('/api/products?page=' + page);
+  const data = await res.json();
 
   let html = "";
-  products.forEach(p => {
+  data.products.forEach(p => {
     html += \`
       <div class="product">
         <b>\${p.title}</b>
@@ -84,6 +90,15 @@ async function loadProducts() {
   });
 
   document.getElementById("productContainer").innerHTML = html;
+
+  let pag = "";
+  if (data.currentPage > 1) {
+    pag += \`<button onclick="loadProducts(\${data.currentPage - 1})">Prev</button>\`;
+  }
+  if (data.currentPage < data.totalPages) {
+    pag += \`<button onclick="loadProducts(\${data.currentPage + 1})">Next</button>\`;
+  }
+  document.getElementById("pagination").innerHTML = pag;
 }
 
 async function loadVariants(productId) {
@@ -129,6 +144,7 @@ async function updatePrice(id, basePrice) {
 }
 
 loadProducts();
+
 </script>
 
   </body>
@@ -145,16 +161,35 @@ app.post("/api/set-gold", (req, res) => {
 });
 
 /* ===============================
-   GET PRODUCTS
+   GET PRODUCTS WITH PAGINATION
 ================================ */
 app.get("/api/products", async (req, res) => {
-  const r = await fetch(
-    `https://${SHOP}/admin/api/2023-10/products.json?limit=20`,
-    { headers:{ "X-Shopify-Access-Token": TOKEN } }
-  );
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
 
-  const data = await r.json();
-  res.json(data.products);
+    // Shopify max 250 per request
+    const r = await fetch(
+      `https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
+      { headers:{ "X-Shopify-Access-Token": TOKEN } }
+    );
+
+    const data = await r.json();
+    const allProducts = data.products || [];
+
+    const start = (page - 1) * limit;
+    const end = start + limit;
+
+    res.json({
+      products: allProducts.slice(start, end),
+      currentPage: page,
+      totalPages: Math.ceil(allProducts.length / limit)
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error:"Failed to load products" });
+  }
 });
 
 /* ===============================
