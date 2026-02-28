@@ -10,45 +10,53 @@ const SHOP = process.env.SHOPIFY_STORE;
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
-async function shopifyFetch(url, method = "GET", body = null) {
-  return fetch(url, {
-    method,
+/* =========================
+   HELPER
+========================= */
+async function shopifyFetch(url) {
+  const response = await fetch(url, {
     headers: {
       "X-Shopify-Access-Token": TOKEN,
       "Content-Type": "application/json",
     },
-    body: body ? JSON.stringify(body) : null,
   });
+
+  if (!response.ok) {
+    const err = await response.text();
+    console.log("Shopify API Error:", err);
+    throw new Error("Shopify API failed");
+  }
+
+  return response.json();
 }
 
-/* ================= API ================= */
-
+/* =========================
+   GET PRODUCTS
+========================= */
 app.get("/api/products", async (req, res) => {
-  const response = await shopifyFetch(
-    `https://${SHOP}/admin/api/2023-10/products.json?limit=250`
-  );
-  const data = await response.json();
-  res.json(data.products);
+  try {
+    const data = await shopifyFetch(
+      `https://${SHOP}/admin/api/2023-10/products.json?limit=50`
+    );
+
+    console.log("Products fetched:", data.products.length);
+
+    res.json(data.products);
+  } catch (err) {
+    console.log("Product Fetch Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get("/api/product/:id", async (req, res) => {
-  const response = await shopifyFetch(
-    `https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`
-  );
-  const data = await response.json();
-  res.json(data.product);
-});
-
-/* ================= UI ================= */
-
+/* =========================
+   MAIN UI
+========================= */
 app.get("/", (req, res) => {
   res.send(`
   <h1>ANAZIA GOLD</h1>
 
-  <div style="margin-bottom:20px;">
-    <button onclick="showTab('pricing')">Pricing Panel</button>
-    <button onclick="showTab('products')">Products</button>
-  </div>
+  <button onclick="showTab('pricing')">Pricing Panel</button>
+  <button onclick="showTab('products')">Products</button>
 
   <div id="pricingTab">
     <h2>Pricing Panel</h2>
@@ -58,13 +66,10 @@ app.get("/", (req, res) => {
 
   <div id="productsTab" style="display:none">
     <h2>Products</h2>
-    <div id="products"></div>
-    <div id="variants"></div>
-    <div id="formArea"></div>
+    <div id="products">Loading...</div>
   </div>
 
   <script>
-
   function showTab(tab){
     document.getElementById("pricingTab").style.display =
       tab === "pricing" ? "block" : "none";
@@ -78,121 +83,40 @@ app.get("/", (req, res) => {
   }
 
   async function loadProducts(){
-    const res = await fetch('/api/products');
-    const data = await res.json();
+    document.getElementById("products").innerHTML = "Loading products...";
 
-    let html = "";
+    try{
+      const res = await fetch('/api/products');
+      const data = await res.json();
 
-    data.forEach(p => {
-      html += \`
-        <div style="padding:10px;border-bottom:1px solid #ccc;cursor:pointer"
-             onclick="loadVariants(\${p.id})">
-          \${p.title}
-        </div>
-      \`;
-    });
+      if(!Array.isArray(data)){
+        document.getElementById("products").innerHTML =
+          "Error loading products";
+        return;
+      }
 
-    document.getElementById("products").innerHTML = html;
+      let html = "";
+
+      data.forEach(p => {
+        html += \`
+          <div style="padding:10px;border-bottom:1px solid #ccc">
+            <b>\${p.title}</b><br>
+            Status: \${p.status}
+          </div>
+        \`;
+      });
+
+      document.getElementById("products").innerHTML = html;
+
+    } catch(err){
+      document.getElementById("products").innerHTML =
+        "API Error - check server logs";
+    }
   }
-
-  async function loadVariants(id){
-    const res = await fetch('/api/product/' + id);
-    const data = await res.json();
-
-    let html = "<h3>Variants</h3>";
-
-    data.variants.forEach(v => {
-      html += \`
-        <div style="margin:5px;color:green;cursor:pointer"
-             onclick="openForm(\${v.id}, '\${v.title}')">
-          \${v.title} - ₹\${v.price}
-        </div>
-      \`;
-    });
-
-    document.getElementById("variants").innerHTML = html;
-  }
-
-  function openForm(variantId, title){
-    document.getElementById("formArea").innerHTML = \`
-      <h3>Configure: \${title}</h3>
-
-      Metal Weight (grams):
-      <input type="number" id="weight"/><br><br>
-
-      Diamond Price:
-      <input type="number" id="diamond"/><br><br>
-
-      Making %:
-      <input type="number" id="making"/><br><br>
-
-      GST %:
-      <input type="number" id="gst"/><br><br>
-
-      <button onclick="updatePrice(\${variantId})">
-        Calculate & Update
-      </button>
-    \`;
-  }
-
-  async function updatePrice(variantId){
-    const goldRate = parseFloat(document.getElementById("goldRate").value);
-    const weight = parseFloat(document.getElementById("weight").value);
-    const diamond = parseFloat(document.getElementById("diamond").value);
-    const making = parseFloat(document.getElementById("making").value);
-    const gst = parseFloat(document.getElementById("gst").value);
-
-    const goldValue = goldRate * weight;
-    const makingValue = goldValue * (making/100);
-    const subtotal = goldValue + diamond + makingValue;
-    const gstValue = subtotal * (gst/100);
-    const finalPrice = subtotal + gstValue;
-
-    await fetch('/api/update-price', {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        variantId,
-        goldRate,
-        weight,
-        diamond,
-        making,
-        gst
-      })
-    });
-
-    alert("Updated: ₹" + finalPrice.toFixed(2));
-  }
-
   </script>
   `);
 });
 
-/* ================= PRICE UPDATE API ================= */
-
-app.post("/api/update-price", async (req, res) => {
-  const { variantId, goldRate, weight, diamond, making, gst } = req.body;
-
-  const goldValue = goldRate * weight;
-  const makingValue = goldValue * (making / 100);
-  const subtotal = goldValue + parseFloat(diamond) + makingValue;
-  const gstValue = subtotal * (gst / 100);
-  const finalPrice = subtotal + gstValue;
-
-  await shopifyFetch(
-    `https://${SHOP}/admin/api/2023-10/variants/${variantId}.json`,
-    "PUT",
-    {
-      variant: {
-        id: variantId,
-        price: finalPrice.toFixed(2),
-      },
-    }
-  );
-
-  res.json({ success: true });
-});
-
 app.listen(PORT, () => {
-  console.log("🚀 ANAZIA PRICING PANEL READY");
+  console.log("🚀 ANAZIA APP RUNNING");
 });
