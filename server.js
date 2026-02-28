@@ -110,14 +110,14 @@ async function loadVariants(productId) {
     html += \`
       <div class="variant">
         <b>\${v.title}</b><br>
-        Base: ₹\${v.price}<br><br>
+        Current Shopify Price: ₹\${v.price}<br><br>
 
         Gold Weight <input id="weight-\${v.id}" placeholder="Weight"><br>
         Diamond Price <input id="diamond-\${v.id}" placeholder="Diamond"><br>
         Making Charges <input id="making-\${v.id}" placeholder="Making"><br>
         GST % <input id="gst-\${v.id}" placeholder="GST"><br>
 
-        <button onclick="updatePrice(\${v.id}, \${v.price})">
+        <button onclick="updatePrice(\${v.id})">
           Update Price
         </button>
       </div>
@@ -127,7 +127,7 @@ async function loadVariants(productId) {
   document.getElementById("variants-" + productId).innerHTML = html;
 }
 
-async function updatePrice(id, basePrice) {
+async function updatePrice(id) {
   const weight = parseFloat(document.getElementById("weight-" + id).value) || 0;
   const diamond = parseFloat(document.getElementById("diamond-" + id).value) || 0;
   const making = parseFloat(document.getElementById("making-" + id).value) || 0;
@@ -136,7 +136,7 @@ async function updatePrice(id, basePrice) {
   const res = await fetch('/api/update', {
     method:"POST",
     headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ id, basePrice, weight, diamond, making, gst })
+    body: JSON.stringify({ id, weight, diamond, making, gst })
   });
 
   const data = await res.json();
@@ -168,7 +168,6 @@ app.get("/api/products", async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = 20;
 
-    // Shopify max 250 per request
     const r = await fetch(
       `https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
       { headers:{ "X-Shopify-Access-Token": TOKEN } }
@@ -206,13 +205,14 @@ app.get("/api/variants/:id", async (req, res) => {
 });
 
 /* ===============================
-   UPDATE PRICE
+   NEW PRICE LOGIC (NO BASE PRICE)
 ================================ */
 app.post("/api/update", async (req, res) => {
-  const { id, basePrice, weight, diamond, making, gst } = req.body;
+  const { id, weight, diamond, making, gst } = req.body;
 
-  const metalCost = GLOBAL_GOLD_RATE * weight;
-  const subtotal = parseFloat(basePrice) + metalCost + diamond + making;
+  // NEW LOGIC
+  const goldAmount = GLOBAL_GOLD_RATE * weight;
+  const subtotal = goldAmount + diamond + making;
   const final = subtotal + (subtotal * gst / 100);
 
   await fetch(
