@@ -20,14 +20,113 @@ res.send(`
 <head>
 <title>ANAZIA GOLD PANEL</title>
 <style>
-body { font-family: Arial; padding:20px; }
-.tabs button { padding:8px 16px; margin-right:5px; cursor:pointer; }
-.section { display:none; margin-top:20px; }
-.active { display:block; }
-.product { border:1px solid #ccc; padding:10px; margin:10px 0; }
-.variant { background:#f9f9f9; padding:10px; margin:5px 0; }
-input { padding:5px; margin:4px; }
-.pagination button { padding:5px 10px; margin:5px; }
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background:#f4f6f9;
+  padding:30px;
+}
+
+h1 {
+  font-size:28px;
+  margin-bottom:20px;
+}
+
+.tabs {
+  margin-bottom:20px;
+}
+
+.tabs button {
+  padding:10px 20px;
+  margin-right:10px;
+  border:none;
+  background:#e0e0e0;
+  cursor:pointer;
+  border-radius:6px;
+  font-weight:600;
+}
+
+.tabs button:hover {
+  background:#000;
+  color:#fff;
+}
+
+.section {
+  display:none;
+}
+
+.active {
+  display:block;
+}
+
+.card {
+  background:#fff;
+  padding:20px;
+  border-radius:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.05);
+  margin-bottom:20px;
+}
+
+input {
+  padding:8px;
+  border:1px solid #ddd;
+  border-radius:6px;
+  margin:5px 0;
+  min-width:120px;
+}
+
+button.primary {
+  padding:8px 15px;
+  background:#000;
+  color:#fff;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+button.primary:hover {
+  background:#333;
+}
+
+.product {
+  border:1px solid #eee;
+  padding:15px;
+  border-radius:8px;
+  margin:10px 0;
+  background:#fff;
+}
+
+.variant {
+  background:#fafafa;
+  padding:15px;
+  margin-top:10px;
+  border-radius:8px;
+  border:1px solid #eee;
+}
+
+.variant input {
+  margin-right:5px;
+}
+
+.pagination button {
+  padding:6px 12px;
+  border:none;
+  background:#000;
+  color:#fff;
+  border-radius:5px;
+  margin:5px 5px 0 0;
+  cursor:pointer;
+}
+
+.pagination button:hover {
+  background:#333;
+}
+
+.status {
+  margin-top:10px;
+  font-weight:600;
+}
+
 </style>
 </head>
 <body>
@@ -40,19 +139,25 @@ input { padding:5px; margin:4px; }
 </div>
 
 <div id="pricing" class="section active">
-<h3>Gold Rate ₹/gram</h3>
-<input id="goldRate" placeholder="Enter gold rate">
-<button onclick="updateGold()">Update Whole Website</button>
-<p id="status"></p>
+  <div class="card">
+    <h3>Update Gold Rate (Whole Website)</h3>
+    <input id="goldRate" placeholder="Enter gold rate">
+    <button class="primary" onclick="updateGold()">Update Prices</button>
+    <div id="status" class="status"></div>
+  </div>
 </div>
 
 <div id="products" class="section">
-<h3>Search Product</h3>
-<input id="searchInput" placeholder="Search by title">
-<button onclick="loadProducts(1)">Search</button>
 
-<div id="productContainer"></div>
-<div class="pagination" id="pagination"></div>
+  <div class="card">
+    <h3>Search Product</h3>
+    <input id="searchInput" placeholder="Search by title">
+    <button class="primary" onclick="loadProducts(1)">Search</button>
+  </div>
+
+  <div id="productContainer"></div>
+  <div class="pagination" id="pagination"></div>
+
 </div>
 
 <script>
@@ -67,7 +172,7 @@ function showTab(id){
 
 async function updateGold(){
  const rate = document.getElementById("goldRate").value;
- document.getElementById("status").innerText="Updating...";
+ document.getElementById("status").innerText="Updating... Please wait";
 
  const res = await fetch('/api/set-gold',{
   method:"POST",
@@ -81,7 +186,6 @@ async function updateGold(){
 
 async function loadProducts(page=1){
  currentPage = page;
-
  const q = document.getElementById("searchInput").value;
 
  const res = await fetch('/api/products?page='+page+'&q='+q);
@@ -92,8 +196,8 @@ async function loadProducts(page=1){
  data.products.forEach(p=>{
   html += \`
    <div class="product">
-    <b>\${p.title}</b>
-    <button onclick="loadVariants(\${p.id})">Configure</button>
+    <strong>\${p.title}</strong>
+    <button class="primary" onclick="loadVariants(\${p.id})" style="margin-left:10px;">Configure</button>
     <div id="variants-\${p.id}"></div>
    </div>
   \`;
@@ -121,14 +225,13 @@ async function loadVariants(productId){
  variants.forEach(v=>{
   html += \`
    <div class="variant">
-    <b>\${v.title}</b><br>
-    Variant ID: \${v.id}<br><br>
+    <b>\${v.title}</b><br><br>
 
     Weight <input id="weight-\${v.id}">
     Diamond <input id="diamond-\${v.id}">
     Making <input id="making-\${v.id}">
     GST % <input id="gst-\${v.id}">
-    <button onclick="saveVariant(\${v.id})">Save</button>
+    <button class="primary" onclick="saveVariant(\${v.id})">Save</button>
    </div>
   \`;
  });
@@ -148,7 +251,7 @@ async function saveVariant(id){
   body: JSON.stringify({id,weight,diamond,making,gst})
  });
 
- alert("Saved Successfully");
+ alert("Configuration Saved");
 }
 
 loadProducts();
