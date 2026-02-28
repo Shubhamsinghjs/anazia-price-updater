@@ -20,62 +20,13 @@ app.get("/", (req, res) => {
   <head>
     <title>ANAZIA GOLD</title>
     <style>
-      body { font-family: Arial; background:#f4f6f9; padding:20px; }
-      h1 { margin-bottom:20px; }
-      .tabs button {
-        padding:10px 20px;
-        margin-right:10px;
-        border:none;
-        background:#111;
-        color:#fff;
-        cursor:pointer;
-        border-radius:5px;
-      }
+      body { font-family: Arial; padding:20px; }
+      .tabs button { padding:8px 16px; margin-right:5px; cursor:pointer; }
       .section { display:none; margin-top:20px; }
       .active { display:block; }
-
-      .card {
-        background:#fff;
-        padding:15px;
-        border-radius:8px;
-        box-shadow:0 2px 8px rgba(0,0,0,0.08);
-        margin-bottom:15px;
-      }
-
-      .variant {
-        background:#fafafa;
-        padding:10px;
-        margin-top:10px;
-        border-radius:6px;
-      }
-
-      input {
-        padding:6px;
-        margin:5px 5px 5px 0;
-        border:1px solid #ccc;
-        border-radius:4px;
-        width:120px;
-      }
-
-      button.action {
-        padding:6px 12px;
-        border:none;
-        background:#007bff;
-        color:#fff;
-        border-radius:4px;
-        cursor:pointer;
-      }
-
-      .pagination button {
-        margin:5px;
-        padding:6px 12px;
-        border:none;
-        background:#333;
-        color:#fff;
-        border-radius:4px;
-        cursor:pointer;
-      }
-
+      .product { border:1px solid #ccc; padding:10px; margin:10px 0; }
+      .variant { background:#f9f9f9; padding:10px; margin:5px 0; }
+      input { padding:4px; margin:4px; width:120px; }
     </style>
   </head>
   <body>
@@ -88,24 +39,19 @@ app.get("/", (req, res) => {
   </div>
 
   <div id="pricing" class="section active">
-    <div class="card">
-      <h3>Gold Pricing Panel</h3>
-      Gold Rate ₹/gram:
-      <input id="goldRate" placeholder="Enter gold rate">
-      <button class="action" onclick="saveGold()">Save</button>
-      <p id="goldSaved"></p>
-    </div>
+    <h2>Gold Pricing Panel</h2>
+    Gold Rate ₹/gram:
+    <input id="goldRate" placeholder="Enter gold rate">
+    <button onclick="saveGold()">Save</button>
+    <p id="goldSaved"></p>
   </div>
 
   <div id="products" class="section">
+    <h2>Products</h2>
     <div id="productContainer">Loading...</div>
-    <div id="pagination" class="pagination"></div>
   </div>
 
 <script>
-
-let currentPage = 1;
-
 function showTab(id) {
   document.getElementById("pricing").classList.remove("active");
   document.getElementById("products").classList.remove("active");
@@ -122,33 +68,22 @@ async function saveGold() {
   document.getElementById("goldSaved").innerText = "Saved!";
 }
 
-async function loadProducts(page = 1) {
-  currentPage = page;
-  const res = await fetch('/api/products?page=' + page);
-  const data = await res.json();
+async function loadProducts() {
+  const res = await fetch('/api/products');
+  const products = await res.json();
 
   let html = "";
-  data.products.forEach(p => {
+  products.forEach(p => {
     html += \`
-      <div class="card">
+      <div class="product">
         <b>\${p.title}</b>
-        <button class="action" onclick="loadVariants(\${p.id})">Configure</button>
+        <button onclick="loadVariants(\${p.id})">Configure</button>
         <div id="variants-\${p.id}"></div>
       </div>
     \`;
   });
 
   document.getElementById("productContainer").innerHTML = html;
-
-  // Pagination
-  let pagHTML = "";
-  if (data.currentPage > 1) {
-    pagHTML += \`<button onclick="loadProducts(\${data.currentPage - 1})">Prev</button>\`;
-  }
-  if (data.currentPage < data.totalPages) {
-    pagHTML += \`<button onclick="loadProducts(\${data.currentPage + 1})">Next</button>\`;
-  }
-  document.getElementById("pagination").innerHTML = pagHTML;
 }
 
 async function loadVariants(productId) {
@@ -162,12 +97,12 @@ async function loadVariants(productId) {
         <b>\${v.title}</b><br>
         Base: ₹\${v.price}<br><br>
 
-        Gold Weight <input id="weight-\${v.id}" placeholder="Weight">
-        Diamond <input id="diamond-\${v.id}" placeholder="Diamond">
-        Making <input id="making-\${v.id}" placeholder="Making">
-        GST % <input id="gst-\${v.id}" placeholder="GST">
+        Gold Weight <input id="weight-\${v.id}" placeholder="Weight"><br>
+        Diamond Price <input id="diamond-\${v.id}" placeholder="Diamond"><br>
+        Making Charges <input id="making-\${v.id}" placeholder="Making"><br>
+        GST % <input id="gst-\${v.id}" placeholder="GST"><br>
 
-        <button class="action" onclick="updatePrice(\${v.id}, \${v.price})">
+        <button onclick="updatePrice(\${v.id}, \${v.price})">
           Update Price
         </button>
       </div>
@@ -194,8 +129,8 @@ async function updatePrice(id, basePrice) {
 }
 
 loadProducts();
-
 </script>
+
   </body>
   </html>
   `);
@@ -210,34 +145,16 @@ app.post("/api/set-gold", (req, res) => {
 });
 
 /* ===============================
-   GET PRODUCTS (500 Max)
+   GET PRODUCTS
 ================================ */
 app.get("/api/products", async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = 20;
+  const r = await fetch(
+    `https://${SHOP}/admin/api/2023-10/products.json?limit=400`,
+    { headers:{ "X-Shopify-Access-Token": TOKEN } }
+  );
 
-    const r = await fetch(
-      \`https://${SHOP}/admin/api/2023-10/products.json?limit=250\`,
-      { headers:{ "X-Shopify-Access-Token": TOKEN } }
-    );
-
-    const data = await r.json();
-    const allProducts = data.products || [];
-
-    const start = (page - 1) * limit;
-    const end = start + limit;
-
-    res.json({
-      products: allProducts.slice(start, end),
-      currentPage: page,
-      totalPages: Math.ceil(allProducts.length / limit)
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error:"Failed to load products" });
-  }
+  const data = await r.json();
+  res.json(data.products);
 });
 
 /* ===============================
@@ -245,7 +162,7 @@ app.get("/api/products", async (req, res) => {
 ================================ */
 app.get("/api/variants/:id", async (req, res) => {
   const r = await fetch(
-    \`https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json\`,
+    `https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
     { headers:{ "X-Shopify-Access-Token": TOKEN } }
   );
 
@@ -264,7 +181,7 @@ app.post("/api/update", async (req, res) => {
   const final = subtotal + (subtotal * gst / 100);
 
   await fetch(
-    \`https://${SHOP}/admin/api/2023-10/variants/${id}.json\`,
+    `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
     {
       method:"PUT",
       headers:{
