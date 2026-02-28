@@ -149,7 +149,7 @@ app.post("/api/set-gold", (req, res) => {
 ================================ */
 app.get("/api/products", async (req, res) => {
   const r = await fetch(
-    `https://${SHOP}/admin/api/2023-10/products.json?limit=400`,
+    `https://${SHOP}/admin/api/2023-10/products.json?limit=20`,
     { headers:{ "X-Shopify-Access-Token": TOKEN } }
   );
 
