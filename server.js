@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 let GLOBAL_GOLD_RATE = 0;
 
 /* ===============================
-   MAIN UI (OLD TAB DESIGN)
+   MAIN UI
 ================================ */
 app.get("/", (req, res) => {
 res.send(`
@@ -27,6 +27,7 @@ body { font-family: Arial; padding:20px; }
 .product { border:1px solid #ccc; padding:10px; margin:10px 0; }
 .variant { background:#f9f9f9; padding:10px; margin:5px 0; }
 input { padding:5px; margin:4px; }
+.pagination button { padding:5px 10px; margin:5px; }
 </style>
 </head>
 <body>
@@ -48,12 +49,15 @@ input { padding:5px; margin:4px; }
 <div id="products" class="section">
 <h3>Search Product</h3>
 <input id="searchInput" placeholder="Search by title">
-<button onclick="searchProducts()">Search</button>
+<button onclick="loadProducts(1)">Search</button>
 
 <div id="productContainer"></div>
+<div class="pagination" id="pagination"></div>
 </div>
 
 <script>
+
+let currentPage = 1;
 
 function showTab(id){
  document.getElementById("pricing").classList.remove("active");
@@ -75,15 +79,17 @@ async function updateGold(){
  document.getElementById("status").innerText="Updated Variants: "+data.updated;
 }
 
-async function searchProducts(){
+async function loadProducts(page=1){
+ currentPage = page;
+
  const q = document.getElementById("searchInput").value;
 
- const res = await fetch('/api/search?q='+q);
- const products = await res.json();
+ const res = await fetch('/api/products?page='+page+'&q='+q);
+ const data = await res.json();
 
  let html = "";
 
- products.forEach(p=>{
+ data.products.forEach(p=>{
   html += \`
    <div class="product">
     <b>\${p.title}</b>
@@ -94,6 +100,16 @@ async function searchProducts(){
  });
 
  document.getElementById("productContainer").innerHTML = html;
+
+ let pag = "";
+ if(data.currentPage>1){
+  pag += \`<button onclick="loadProducts(\${data.currentPage-1})">Prev</button>\`;
+ }
+ if(data.currentPage<data.totalPages){
+  pag += \`<button onclick="loadProducts(\${data.currentPage+1})">Next</button>\`;
+ }
+
+ document.getElementById("pagination").innerHTML = pag;
 }
 
 async function loadVariants(productId){
@@ -112,7 +128,7 @@ async function loadVariants(productId){
     Diamond <input id="diamond-\${v.id}">
     Making <input id="making-\${v.id}">
     GST % <input id="gst-\${v.id}">
-    <button onclick="saveVariant(\${v.id})">Save Config</button>
+    <button onclick="saveVariant(\${v.id})">Save</button>
    </div>
   \`;
  });
@@ -132,8 +148,10 @@ async function saveVariant(id){
   body: JSON.stringify({id,weight,diamond,making,gst})
  });
 
- alert("Saved!");
+ alert("Saved Successfully");
 }
+
+loadProducts();
 
 </script>
 
@@ -143,37 +161,55 @@ async function saveVariant(id){
 });
 
 /* ===============================
- SEARCH PRODUCTS
+   PRODUCTS WITH PAGINATION + SEARCH
 ================================ */
-app.get("/api/search", async (req,res)=>{
- const q = req.query.q || "";
+app.get("/api/products", async (req,res)=>{
+
+ const page = parseInt(req.query.page)||1;
+ const q = req.query.q||"";
+ const limit = 20;
 
  const r = await fetch(
-  `https://${SHOP}/admin/api/2023-10/products.json?limit=250&title=${q}`,
+  `https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
   { headers:{ "X-Shopify-Access-Token":TOKEN } }
  );
 
  const data = await r.json();
- res.json(data.products || []);
+ let allProducts = data.products || [];
+
+ if(q){
+  allProducts = allProducts.filter(p =>
+   p.title.toLowerCase().includes(q.toLowerCase())
+  );
+ }
+
+ const start = (page-1)*limit;
+ const end = start+limit;
+
+ res.json({
+  products: allProducts.slice(start,end),
+  currentPage: page,
+  totalPages: Math.ceil(allProducts.length/limit)
+ });
 });
 
 /* ===============================
- GET VARIANTS
+   GET VARIANTS
 ================================ */
 app.get("/api/variants/:id", async (req,res)=>{
  const r = await fetch(
   `https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
   { headers:{ "X-Shopify-Access-Token":TOKEN } }
  );
-
  const data = await r.json();
  res.json(data.product.variants);
 });
 
 /* ===============================
- SAVE VARIANT CONFIG
+   SAVE VARIANT CONFIG
 ================================ */
 app.post("/api/save-variant", async (req,res)=>{
+
  const {id,weight,diamond,making,gst} = req.body;
 
  await fetch(
@@ -199,78 +235,66 @@ app.post("/api/save-variant", async (req,res)=>{
 });
 
 /* ===============================
- BULK UPDATE ON GOLD CHANGE
+   UPDATE WHOLE WEBSITE
 ================================ */
 app.post("/api/set-gold", async (req,res)=>{
 
  GLOBAL_GOLD_RATE = parseFloat(req.body.rate)||0;
 
- let updated=0;
- let page=1;
- let hasMore=true;
+ let updated = 0;
 
- while(hasMore){
+ const r = await fetch(
+  `https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
+  { headers:{ "X-Shopify-Access-Token":TOKEN } }
+ );
 
-  const r = await fetch(
-   `https://${SHOP}/admin/api/2023-10/products.json?limit=250&page=${page}`,
-   { headers:{ "X-Shopify-Access-Token":TOKEN } }
-  );
+ const data = await r.json();
+ const products = data.products||[];
 
-  const data = await r.json();
-  const products = data.products || [];
+ for(const p of products){
+  for(const v of p.variants){
 
-  if(products.length===0){
-   hasMore=false;
-   break;
-  }
+   const metaRes = await fetch(
+    `https://${SHOP}/admin/api/2023-10/variants/${v.id}/metafields.json`,
+    { headers:{ "X-Shopify-Access-Token":TOKEN } }
+   );
 
-  for(const p of products){
-   for(const v of p.variants){
+   const metaData = await metaRes.json();
+   const config = metaData.metafields.find(m=>m.key==="gold_config");
 
-    const metaRes = await fetch(
-     `https://${SHOP}/admin/api/2023-10/variants/${v.id}/metafields.json`,
-     { headers:{ "X-Shopify-Access-Token":TOKEN } }
+   if(config){
+
+    const parsed = JSON.parse(config.value);
+
+    const weight = parseFloat(parsed.weight||0);
+    const diamond = parseFloat(parsed.diamond||0);
+    const making = parseFloat(parsed.making||0);
+    const gst = parseFloat(parsed.gst||0);
+
+    const goldTotal = GLOBAL_GOLD_RATE * weight;
+    const subtotal = goldTotal + diamond + making;
+    const final = subtotal + (subtotal*(gst/100));
+
+    await fetch(
+     `https://${SHOP}/admin/api/2023-10/variants/${v.id}.json`,
+     {
+      method:"PUT",
+      headers:{
+       "X-Shopify-Access-Token":TOKEN,
+       "Content-Type":"application/json"
+      },
+      body: JSON.stringify({
+       variant:{id:v.id,price:final.toFixed(2)}
+      })
+     }
     );
 
-    const metaData = await metaRes.json();
-    const config = metaData.metafields.find(m=>m.key==="gold_config");
-
-    if(config){
-     const parsed = JSON.parse(config.value);
-
-     const weight = parseFloat(parsed.weight||0);
-     const diamond = parseFloat(parsed.diamond||0);
-     const making = parseFloat(parsed.making||0);
-     const gst = parseFloat(parsed.gst||0);
-
-     const goldTotal = GLOBAL_GOLD_RATE * weight;
-     const subtotal = goldTotal + diamond + making;
-     const gstAmount = subtotal*(gst/100);
-     const final = subtotal + gstAmount;
-
-     await fetch(
-      `https://${SHOP}/admin/api/2023-10/variants/${v.id}.json`,
-      {
-       method:"PUT",
-       headers:{
-        "X-Shopify-Access-Token":TOKEN,
-        "Content-Type":"application/json"
-       },
-       body: JSON.stringify({
-        variant:{id:v.id,price:final.toFixed(2)}
-       })
-      }
-     );
-
-     updated++;
-    }
+    updated++;
    }
   }
-
-  page++;
  }
 
  res.json({updated});
 });
 
-app.listen(PORT, ()=>console.log("ANAZIA SYSTEM RUNNING"));
+app.listen(PORT, ()=>console.log("ANAZIA RUNNING"));
