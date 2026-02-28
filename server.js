@@ -10,10 +10,6 @@ const SHOP = process.env.SHOPIFY_STORE;
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
-/* ======================
-   HELPER FUNCTION
-====================== */
-
 async function shopifyFetch(url, method = "GET", body = null) {
   return fetch(url, {
     method,
@@ -25,9 +21,8 @@ async function shopifyFetch(url, method = "GET", body = null) {
   });
 }
 
-/* ======================
-   GET PRODUCTS
-====================== */
+/* ================= API ================= */
+
 app.get("/api/products", async (req, res) => {
   const response = await shopifyFetch(
     `https://${SHOP}/admin/api/2023-10/products.json?limit=250`
@@ -36,9 +31,6 @@ app.get("/api/products", async (req, res) => {
   res.json(data.products);
 });
 
-/* ======================
-   GET PRODUCT + VARIANTS
-====================== */
 app.get("/api/product/:id", async (req, res) => {
   const response = await shopifyFetch(
     `https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`
@@ -47,106 +39,53 @@ app.get("/api/product/:id", async (req, res) => {
   res.json(data.product);
 });
 
-/* ======================
-   GET VARIANT METAFIELDS
-====================== */
-app.get("/api/variant-meta/:id", async (req, res) => {
-  const response = await shopifyFetch(
-    `https://${SHOP}/admin/api/2023-10/variants/${req.params.id}/metafields.json`
-  );
-  const data = await response.json();
+/* ================= UI ================= */
 
-  const getValue = (key) => {
-    const field = data.metafields.find(
-      m => m.namespace === "custom" && m.key === key
-    );
-    return field ? field.value : "";
-  };
-
-  res.json({
-    weight: getValue("gold_weight"),
-    diamond: getValue("diamond_price"),
-    making: getValue("making_percent"),
-    gst: getValue("gst_percent"),
-  });
-});
-
-/* ======================
-   UPDATE PRICE + SAVE META
-====================== */
-app.post("/api/update-price", async (req, res) => {
-  const { variantId, goldRate, weight, diamond, making, gst } = req.body;
-
-  const goldValue = goldRate * weight;
-  const makingValue = goldValue * (making / 100);
-  const subtotal = goldValue + parseFloat(diamond || 0) + makingValue;
-  const gstValue = subtotal * (gst / 100);
-  const finalPrice = subtotal + gstValue;
-
-  // Update variant price
-  await shopifyFetch(
-    `https://${SHOP}/admin/api/2023-10/variants/${variantId}.json`,
-    "PUT",
-    {
-      variant: {
-        id: variantId,
-        price: finalPrice.toFixed(2),
-      },
-    }
-  );
-
-  // Save metafields
-  const metafields = [
-    { key: "diamond_price", value: diamond },
-    { key: "making_percent", value: making },
-    { key: "gst_percent", value: gst },
-  ];
-
-  for (const field of metafields) {
-    await shopifyFetch(
-      `https://${SHOP}/admin/api/2023-10/metafields.json`,
-      "POST",
-      {
-        metafield: {
-          namespace: "custom",
-          key: field.key,
-          type: "single_line_text_field",
-          value: field.value.toString(),
-          owner_id: variantId,
-          owner_resource: "variant",
-        },
-      }
-    );
-  }
-
-  res.json({ success: true, finalPrice });
-});
-
-/* ======================
-   ADMIN UI
-====================== */
 app.get("/", (req, res) => {
   res.send(`
-  <h1>ANAZIA GOLD – PRICING PANEL</h1>
+  <h1>ANAZIA GOLD</h1>
 
-  Gold Rate ₹/gram:
-  <input type="number" id="goldRate" /><br><br>
+  <div style="margin-bottom:20px;">
+    <button onclick="showTab('pricing')">Pricing Panel</button>
+    <button onclick="showTab('products')">Products</button>
+  </div>
 
-  <button onclick="loadProducts()">Load Products</button>
-  <div id="products"></div>
-  <div id="variants"></div>
-  <div id="formArea"></div>
+  <div id="pricingTab">
+    <h2>Pricing Panel</h2>
+    Gold Rate ₹/gram:
+    <input type="number" id="goldRate" value="7000"/>
+  </div>
+
+  <div id="productsTab" style="display:none">
+    <h2>Products</h2>
+    <div id="products"></div>
+    <div id="variants"></div>
+    <div id="formArea"></div>
+  </div>
 
   <script>
+
+  function showTab(tab){
+    document.getElementById("pricingTab").style.display =
+      tab === "pricing" ? "block" : "none";
+
+    document.getElementById("productsTab").style.display =
+      tab === "products" ? "block" : "none";
+
+    if(tab === "products"){
+      loadProducts();
+    }
+  }
 
   async function loadProducts(){
     const res = await fetch('/api/products');
     const data = await res.json();
 
-    let html = "<h3>Select Product</h3>";
+    let html = "";
+
     data.forEach(p => {
       html += \`
-        <div style="cursor:pointer;color:blue;margin:5px"
+        <div style="padding:10px;border-bottom:1px solid #ccc;cursor:pointer"
              onclick="loadVariants(\${p.id})">
           \${p.title}
         </div>
@@ -161,9 +100,10 @@ app.get("/", (req, res) => {
     const data = await res.json();
 
     let html = "<h3>Variants</h3>";
+
     data.variants.forEach(v => {
       html += \`
-        <div style="cursor:pointer;margin:5px;color:green"
+        <div style="margin:5px;color:green;cursor:pointer"
              onclick="openForm(\${v.id}, '\${v.title}')">
           \${v.title} - ₹\${v.price}
         </div>
@@ -173,25 +113,21 @@ app.get("/", (req, res) => {
     document.getElementById("variants").innerHTML = html;
   }
 
-  async function openForm(variantId, title){
-
-    const res = await fetch('/api/variant-meta/' + variantId);
-    const data = await res.json();
-
+  function openForm(variantId, title){
     document.getElementById("formArea").innerHTML = \`
-      <h3>Configure Variant: \${title}</h3>
+      <h3>Configure: \${title}</h3>
 
       Metal Weight (grams):
-      <input type="number" id="weight" value="\${data.weight}" /><br><br>
+      <input type="number" id="weight"/><br><br>
 
       Diamond Price:
-      <input type="number" id="diamond" value="\${data.diamond}" /><br><br>
+      <input type="number" id="diamond"/><br><br>
 
       Making %:
-      <input type="number" id="making" value="\${data.making}" /><br><br>
+      <input type="number" id="making"/><br><br>
 
       GST %:
-      <input type="number" id="gst" value="\${data.gst}" /><br><br>
+      <input type="number" id="gst"/><br><br>
 
       <button onclick="updatePrice(\${variantId})">
         Calculate & Update
@@ -206,7 +142,13 @@ app.get("/", (req, res) => {
     const making = parseFloat(document.getElementById("making").value);
     const gst = parseFloat(document.getElementById("gst").value);
 
-    const res = await fetch('/api/update-price', {
+    const goldValue = goldRate * weight;
+    const makingValue = goldValue * (making/100);
+    const subtotal = goldValue + diamond + makingValue;
+    const gstValue = subtotal * (gst/100);
+    const finalPrice = subtotal + gstValue;
+
+    await fetch('/api/update-price', {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -219,12 +161,36 @@ app.get("/", (req, res) => {
       })
     });
 
-    const data = await res.json();
-    alert("Updated! Final Price: ₹" + data.finalPrice);
+    alert("Updated: ₹" + finalPrice.toFixed(2));
   }
 
   </script>
   `);
+});
+
+/* ================= PRICE UPDATE API ================= */
+
+app.post("/api/update-price", async (req, res) => {
+  const { variantId, goldRate, weight, diamond, making, gst } = req.body;
+
+  const goldValue = goldRate * weight;
+  const makingValue = goldValue * (making / 100);
+  const subtotal = goldValue + parseFloat(diamond) + makingValue;
+  const gstValue = subtotal * (gst / 100);
+  const finalPrice = subtotal + gstValue;
+
+  await shopifyFetch(
+    `https://${SHOP}/admin/api/2023-10/variants/${variantId}.json`,
+    "PUT",
+    {
+      variant: {
+        id: variantId,
+        price: finalPrice.toFixed(2),
+      },
+    }
+  );
+
+  res.json({ success: true });
 });
 
 app.listen(PORT, () => {
