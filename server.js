@@ -4,63 +4,107 @@ const fetch = require("node-fetch");
 
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 const SHOP = process.env.SHOPIFY_STORE;
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
-if (!SHOP || !TOKEN) {
-  console.log("Missing .env values");
-  process.exit(1);
-}
+let GLOBAL_GOLD_RATE = 0;
 
 /* ===============================
    MAIN UI
 ================================ */
 app.get("/", (req, res) => {
   res.send(`
-    <h1>ANAZIA GOLD – PRICING PANEL</h1>
-    <button onclick="loadProducts()">Load Products</button>
-    <div id="products"></div>
+  <html>
+  <head>
+    <title>ANAZIA GOLD</title>
+    <style>
+      body { font-family: Arial; padding:20px; }
+      .tabs button { padding:8px 16px; margin-right:5px; cursor:pointer; }
+      .section { display:none; margin-top:20px; }
+      .active { display:block; }
+      .product { border:1px solid #ccc; padding:10px; margin:10px 0; }
+      .variant { background:#f9f9f9; padding:10px; margin:5px 0; }
+      input { padding:4px; margin:4px; width:120px; }
+    </style>
+  </head>
+  <body>
+
+  <h1>ANAZIA GOLD – PRICING PANEL</h1>
+
+  <div class="tabs">
+    <button onclick="showTab('pricing')">Pricing Panel</button>
+    <button onclick="showTab('products')">Products</button>
+  </div>
+
+  <div id="pricing" class="section active">
+    <h2>Gold Pricing Panel</h2>
+    Gold Rate ₹/gram:
+    <input id="goldRate" placeholder="Enter gold rate">
+    <button onclick="saveGold()">Save</button>
+    <p id="goldSaved"></p>
+  </div>
+
+  <div id="products" class="section">
+    <h2>Products</h2>
+    <div id="productContainer">Loading...</div>
+  </div>
 
 <script>
+function showTab(id) {
+  document.getElementById("pricing").classList.remove("active");
+  document.getElementById("products").classList.remove("active");
+  document.getElementById(id).classList.add("active");
+}
+
+async function saveGold() {
+  const rate = document.getElementById("goldRate").value;
+  await fetch('/api/set-gold', {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ rate })
+  });
+  document.getElementById("goldSaved").innerText = "Saved!";
+}
+
 async function loadProducts() {
   const res = await fetch('/api/products');
   const products = await res.json();
 
-  let html = "<h2>Products</h2>";
+  let html = "";
   products.forEach(p => {
     html += \`
-      <div style="margin-bottom:10px">
-        <button onclick="loadVariants(\${p.id})">\${p.title}</button>
+      <div class="product">
+        <b>\${p.title}</b>
+        <button onclick="loadVariants(\${p.id})">Configure</button>
         <div id="variants-\${p.id}"></div>
       </div>
     \`;
   });
 
-  document.getElementById("products").innerHTML = html;
+  document.getElementById("productContainer").innerHTML = html;
 }
 
 async function loadVariants(productId) {
   const res = await fetch('/api/variants/' + productId);
   const variants = await res.json();
 
-  let html = "<h3>Variants</h3>";
-
+  let html = "";
   variants.forEach(v => {
     html += \`
-      <div style="border:1px solid #ccc;padding:10px;margin:5px">
+      <div class="variant">
         <b>\${v.title}</b><br>
-        Base Price: ₹\${v.price}<br><br>
+        Base: ₹\${v.price}<br><br>
 
-        Gold Rate: <input id="gold-\${v.id}" placeholder="Gold Rate"><br>
-        Gold Weight: <input id="weight-\${v.id}" placeholder="Weight"><br>
-        Diamond Price: <input id="diamond-\${v.id}" placeholder="Diamond"><br>
-        Making Charges: <input id="making-\${v.id}" placeholder="Making"><br>
-        GST %: <input id="gst-\${v.id}" placeholder="GST"><br><br>
+        Gold Weight <input id="weight-\${v.id}" placeholder="Weight"><br>
+        Diamond Price <input id="diamond-\${v.id}" placeholder="Diamond"><br>
+        Making Charges <input id="making-\${v.id}" placeholder="Making"><br>
+        GST % <input id="gst-\${v.id}" placeholder="GST"><br>
 
-        <button onclick="updatePrice(\${v.id}, \${v.price})">Update Price</button>
+        <button onclick="updatePrice(\${v.id}, \${v.price})">
+          Update Price
+        </button>
       </div>
     \`;
   });
@@ -69,103 +113,88 @@ async function loadVariants(productId) {
 }
 
 async function updatePrice(id, basePrice) {
-  const gold = parseFloat(document.getElementById("gold-" + id).value) || 0;
   const weight = parseFloat(document.getElementById("weight-" + id).value) || 0;
   const diamond = parseFloat(document.getElementById("diamond-" + id).value) || 0;
   const making = parseFloat(document.getElementById("making-" + id).value) || 0;
   const gst = parseFloat(document.getElementById("gst-" + id).value) || 0;
 
-  const res = await fetch('/api/update-price', {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, basePrice, gold, weight, diamond, making, gst })
+  const res = await fetch('/api/update', {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ id, basePrice, weight, diamond, making, gst })
   });
 
   const data = await res.json();
-  alert("Updated: ₹" + data.finalPrice);
+  alert("Updated ₹" + data.final);
 }
+
+loadProducts();
 </script>
+
+  </body>
+  </html>
   `);
 });
 
 /* ===============================
-   FETCH PRODUCTS
+   SET GOLD RATE
 ================================ */
-app.get("/api/products", async (req, res) => {
-  try {
-    const response = await fetch(
-      `https://${SHOP}/admin/api/2023-10/products.json?limit=50`,
-      {
-        headers: {
-          "X-Shopify-Access-Token": TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const data = await response.json();
-    res.json(data.products);
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Product fetch failed" });
-  }
+app.post("/api/set-gold", (req, res) => {
+  GLOBAL_GOLD_RATE = parseFloat(req.body.rate) || 0;
+  res.json({ success:true });
 });
 
 /* ===============================
-   FETCH VARIANTS
+   GET PRODUCTS
 ================================ */
-app.get("/api/variants/:productId", async (req, res) => {
-  try {
-    const response = await fetch(
-      `https://${SHOP}/admin/api/2023-10/products/${req.params.productId}.json`,
-      {
-        headers: {
-          "X-Shopify-Access-Token": TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+app.get("/api/products", async (req, res) => {
+  const r = await fetch(
+    `https://${SHOP}/admin/api/2023-10/products.json?limit=20`,
+    { headers:{ "X-Shopify-Access-Token": TOKEN } }
+  );
 
-    const data = await response.json();
-    res.json(data.product.variants);
-  } catch (err) {
-    res.status(500).json({ error: "Variant fetch failed" });
-  }
+  const data = await r.json();
+  res.json(data.products);
+});
+
+/* ===============================
+   GET VARIANTS
+================================ */
+app.get("/api/variants/:id", async (req, res) => {
+  const r = await fetch(
+    `https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
+    { headers:{ "X-Shopify-Access-Token": TOKEN } }
+  );
+
+  const data = await r.json();
+  res.json(data.product.variants);
 });
 
 /* ===============================
    UPDATE PRICE
 ================================ */
-app.post("/api/update-price", async (req, res) => {
-  try {
-    const { id, basePrice, gold, weight, diamond, making, gst } = req.body;
+app.post("/api/update", async (req, res) => {
+  const { id, basePrice, weight, diamond, making, gst } = req.body;
 
-    const metalCost = gold * weight;
-    const subtotal = parseFloat(basePrice) + metalCost + diamond + making;
-    const finalPrice = subtotal + (subtotal * gst / 100);
+  const metalCost = GLOBAL_GOLD_RATE * weight;
+  const subtotal = parseFloat(basePrice) + metalCost + diamond + making;
+  const final = subtotal + (subtotal * gst / 100);
 
-    await fetch(
-      `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
-      {
-        method: "PUT",
-        headers: {
-          "X-Shopify-Access-Token": TOKEN,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          variant: {
-            id,
-            price: finalPrice.toFixed(2),
-          },
-        }),
-      }
-    );
+  await fetch(
+    `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
+    {
+      method:"PUT",
+      headers:{
+        "X-Shopify-Access-Token": TOKEN,
+        "Content-Type":"application/json"
+      },
+      body: JSON.stringify({
+        variant:{ id, price: final.toFixed(2) }
+      })
+    }
+  );
 
-    res.json({ finalPrice: finalPrice.toFixed(2) });
-
-  } catch (err) {
-    res.status(500).json({ error: "Update failed" });
-  }
+  res.json({ final: final.toFixed(2) });
 });
 
 app.listen(PORT, () => {
