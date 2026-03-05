@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ path: ".env" });
 const express = require("express");
 const fetch = require("node-fetch");
 
@@ -9,15 +9,41 @@ const SHOP = process.env.SHOPIFY_STORE;
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
+if (!SHOP || !TOKEN) {
+  console.error("❌ Missing SHOPIFY_STORE or SHOPIFY_ACCESS_TOKEN in .env");
+  process.exit(1);
+}
+
 let GLOBAL_GOLD_RATE = 0;
+
+/* ===============================
+   SAFE SHOPIFY FETCH (RETRY)
+================================ */
+
+async function shopifyFetch(url, options = {}, retries = 3) {
+  try {
+    const res = await fetch(url, options);
+    return res;
+  } catch (err) {
+    if (retries > 0) {
+      console.log("Retrying Shopify API...");
+      await new Promise(r => setTimeout(r, 1000));
+      return shopifyFetch(url, options, retries - 1);
+    }
+    throw err;
+  }
+}
 
 /* ===============================
    MAIN UI
 ================================ */
+
 app.get("/", (req, res) => {
+
 res.send(`
 <html>
 <head>
+
 <title>ANAZIA GOLD PANEL</title>
 
 <style>
@@ -30,10 +56,6 @@ padding:30px;
 
 h1{
 font-size:28px;
-margin-bottom:20px;
-}
-
-.tabs{
 margin-bottom:20px;
 }
 
@@ -84,10 +106,6 @@ border-radius:6px;
 cursor:pointer;
 }
 
-button.primary:hover{
-background:#333;
-}
-
 .product{
 background:white;
 border-radius:8px;
@@ -114,11 +132,8 @@ margin-right:5px;
 cursor:pointer;
 }
 
-.pagination button:hover{
-background:#333;
-}
-
 </style>
+
 </head>
 
 <body>
@@ -130,8 +145,8 @@ background:#333;
 <button onclick="showTab('products')">Products</button>
 </div>
 
-
 <div id="pricing" class="section active">
+
 <div class="card">
 
 <h3>Gold Rate ₹/gram</h3>
@@ -145,8 +160,8 @@ Update Whole Website
 <p id="status"></p>
 
 </div>
-</div>
 
+</div>
 
 
 <div id="products" class="section">
@@ -183,8 +198,6 @@ document.getElementById(id).classList.add("active");
 
 }
 
-
-
 async function updateGold(){
 
 const rate = document.getElementById("goldRate").value;
@@ -202,8 +215,6 @@ const data = await res.json();
 document.getElementById("status").innerText="Updated Variants: "+data.updated;
 
 }
-
-
 
 async function loadProducts(page=1){
 
@@ -251,8 +262,6 @@ document.getElementById("pagination").innerHTML = pag;
 
 }
 
-
-
 async function loadVariants(productId){
 
 const res = await fetch('/api/variants/'+productId);
@@ -287,8 +296,6 @@ document.getElementById("variants-"+productId).innerHTML = html;
 
 }
 
-
-
 async function saveVariant(id){
 
 const weight = document.getElementById("weight-"+id).value;
@@ -306,29 +313,31 @@ alert("Saved Successfully");
 
 }
 
-
 loadProducts();
 
 </script>
 
 </body>
 </html>
+
 `);
+
 });
 
-
 /* ===============================
-   PRODUCTS WITH PAGINATION + SEARCH
+   PRODUCTS
 ================================ */
 
 app.get("/api/products", async (req,res)=>{
+
+try{
 
 const page = parseInt(req.query.page)||1;
 const q = req.query.q||"";
 const limit = 20;
 
-const r = await fetch(
-`https://\${SHOP}/admin/api/2023-10/products.json?limit=250`,
+const r = await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
 { headers:{ "X-Shopify-Access-Token":TOKEN } }
 );
 
@@ -350,8 +359,14 @@ currentPage: page,
 totalPages: Math.ceil(allProducts.length/limit)
 });
 
-});
+}catch(err){
 
+console.error(err);
+res.json({products:[],currentPage:1,totalPages:1});
+
+}
+
+});
 
 /* ===============================
    GET VARIANTS
@@ -359,8 +374,8 @@ totalPages: Math.ceil(allProducts.length/limit)
 
 app.get("/api/variants/:id", async (req,res)=>{
 
-const r = await fetch(
-`https://\${SHOP}/admin/api/2023-10/products/\${req.params.id}.json`,
+const r = await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
 { headers:{ "X-Shopify-Access-Token":TOKEN } }
 );
 
@@ -370,7 +385,6 @@ res.json(data.product.variants);
 
 });
 
-
 /* ===============================
    SAVE VARIANT CONFIG
 ================================ */
@@ -379,8 +393,8 @@ app.post("/api/save-variant", async (req,res)=>{
 
 const {id,weight,diamond,making,gst} = req.body;
 
-await fetch(
-`https://\${SHOP}/admin/api/2023-10/variants/\${id}/metafields.json`,
+await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/variants/${id}/metafields.json`,
 {
 method:"POST",
 headers:{
@@ -402,7 +416,6 @@ res.json({success:true});
 
 });
 
-
 /* ===============================
    UPDATE WHOLE WEBSITE
 ================================ */
@@ -413,8 +426,8 @@ GLOBAL_GOLD_RATE = parseFloat(req.body.rate)||0;
 
 let updated = 0;
 
-const r = await fetch(
-`https://\${SHOP}/admin/api/2023-10/products.json?limit=250`,
+const r = await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
 { headers:{ "X-Shopify-Access-Token":TOKEN } }
 );
 
@@ -425,8 +438,8 @@ for(const p of products){
 
 for(const v of p.variants){
 
-const metaRes = await fetch(
-`https://\${SHOP}/admin/api/2023-10/variants/\${v.id}/metafields.json`,
+const metaRes = await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/variants/${v.id}/metafields.json`,
 { headers:{ "X-Shopify-Access-Token":TOKEN } }
 );
 
@@ -449,8 +462,8 @@ const subtotal = goldTotal + diamond + making;
 
 const final = subtotal + (subtotal*(gst/100));
 
-await fetch(
-`https://\${SHOP}/admin/api/2023-10/variants/\${v.id}.json`,
+await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/variants/${v.id}.json`,
 {
 method:"PUT",
 headers:{
@@ -474,6 +487,5 @@ updated++;
 res.json({updated});
 
 });
-
 
 app.listen(PORT, ()=>console.log("ANAZIA RUNNING"));
