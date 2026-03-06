@@ -10,32 +10,65 @@ const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
 if (!SHOP || !TOKEN) {
-  console.error("❌ Missing SHOPIFY_STORE or SHOPIFY_ACCESS_TOKEN in .env");
+  console.log("Missing Shopify ENV");
   process.exit(1);
 }
 
 let GLOBAL_GOLD_RATE = 0;
 
 /* ===============================
-   SAFE SHOPIFY FETCH (RETRY)
+ SAFE SHOPIFY FETCH
 ================================ */
 
-async function shopifyFetch(url, options = {}, retries = 3) {
-  try {
-    const res = await fetch(url, options);
-    return res;
-  } catch (err) {
-    if (retries > 0) {
-      console.log("Retrying Shopify API...");
-      await new Promise(r => setTimeout(r, 1000));
-      return shopifyFetch(url, options, retries - 1);
-    }
-    throw err;
+async function shopifyFetch(url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    throw new Error("Shopify API Error");
   }
+  return res;
 }
 
 /* ===============================
-   MAIN UI
+ GET ALL PRODUCTS (5000 SUPPORT)
+================================ */
+
+async function getAllProducts() {
+
+let allProducts = [];
+let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
+
+while (url) {
+
+const res = await shopifyFetch(url, {
+headers: { "X-Shopify-Access-Token": TOKEN }
+});
+
+const data = await res.json();
+
+allProducts = allProducts.concat(data.products);
+
+const link = res.headers.get("link");
+
+if (link && link.includes('rel="next"')) {
+
+const match = link.match(/<([^>]+)>; rel="next"/);
+
+url = match ? match[1] : null;
+
+} else {
+
+url = null;
+
+}
+
+}
+
+return allProducts;
+
+}
+
+/* ===============================
+ MAIN UI
 ================================ */
 
 app.get("/", (req, res) => {
@@ -43,7 +76,6 @@ app.get("/", (req, res) => {
 res.send(`
 <html>
 <head>
-
 <title>ANAZIA GOLD PANEL</title>
 
 <style>
@@ -325,7 +357,7 @@ loadProducts();
 });
 
 /* ===============================
-   PRODUCTS
+ PRODUCTS WITH 5000 SUPPORT
 ================================ */
 
 app.get("/api/products", async (req,res)=>{
@@ -336,32 +368,31 @@ const page = parseInt(req.query.page)||1;
 const q = req.query.q||"";
 const limit = 20;
 
-const r = await shopifyFetch(
-`https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
-{ headers:{ "X-Shopify-Access-Token":TOKEN } }
-);
+const allProducts = await getAllProducts();
 
-const data = await r.json();
-let allProducts = data.products || [];
+let filtered = allProducts;
 
 if(q){
-allProducts = allProducts.filter(p =>
+
+filtered = allProducts.filter(p =>
 p.title.toLowerCase().includes(q.toLowerCase())
 );
+
 }
 
 const start = (page-1)*limit;
 const end = start+limit;
 
 res.json({
-products: allProducts.slice(start,end),
+products: filtered.slice(start,end),
 currentPage: page,
-totalPages: Math.ceil(allProducts.length/limit)
+totalPages: Math.ceil(filtered.length/limit)
 });
 
-}catch(err){
+}catch(e){
 
-console.error(err);
+console.log(e);
+
 res.json({products:[],currentPage:1,totalPages:1});
 
 }
@@ -369,7 +400,7 @@ res.json({products:[],currentPage:1,totalPages:1});
 });
 
 /* ===============================
-   GET VARIANTS
+ VARIANTS
 ================================ */
 
 app.get("/api/variants/:id", async (req,res)=>{
@@ -386,7 +417,7 @@ res.json(data.product.variants);
 });
 
 /* ===============================
-   SAVE VARIANT CONFIG
+ SAVE VARIANT CONFIG
 ================================ */
 
 app.post("/api/save-variant", async (req,res)=>{
@@ -417,7 +448,7 @@ res.json({success:true});
 });
 
 /* ===============================
-   UPDATE WHOLE WEBSITE
+ UPDATE WHOLE WEBSITE
 ================================ */
 
 app.post("/api/set-gold", async (req,res)=>{
@@ -426,13 +457,7 @@ GLOBAL_GOLD_RATE = parseFloat(req.body.rate)||0;
 
 let updated = 0;
 
-const r = await shopifyFetch(
-`https://${SHOP}/admin/api/2023-10/products.json?limit=250`,
-{ headers:{ "X-Shopify-Access-Token":TOKEN } }
-);
-
-const data = await r.json();
-const products = data.products||[];
+const products = await getAllProducts();
 
 for(const p of products){
 
