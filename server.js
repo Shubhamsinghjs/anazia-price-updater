@@ -16,62 +16,89 @@ if (!SHOP || !TOKEN) {
 
 let GLOBAL_GOLD_RATE = 0;
 
+
 /* ===============================
- SAFE SHOPIFY FETCH
+ SHOPIFY SAFE FETCH
 ================================ */
 
-async function shopifyFetch(url, options = {}) {
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    throw new Error("Shopify API Error");
+async function shopifyFetch(url, options = {}, retry = 3) {
+
+  try {
+
+    const res = await fetch(url, options);
+
+    if (res.status === 429) {
+      console.log("⚠ Shopify rate limit hit... waiting");
+      await new Promise(r => setTimeout(r, 800));
+      return shopifyFetch(url, options, retry);
+    }
+
+    if (!res.ok) {
+      throw new Error("Shopify API Error");
+    }
+
+    return res;
+
+  } catch (e) {
+
+    if (retry > 0) {
+      console.log("Retrying Shopify API...");
+      await new Promise(r => setTimeout(r, 1000));
+      return shopifyFetch(url, options, retry - 1);
+    }
+
+    console.log("API FAILED:", url);
+    return null;
   }
-  return res;
 }
 
+
 /* ===============================
- GET ALL PRODUCTS (5000 SUPPORT)
+ GET ALL PRODUCTS (5000+)
 ================================ */
 
 async function getAllProducts() {
 
-let allProducts = [];
-let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
+  let allProducts = [];
+  let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
 
-while (url) {
+  while (url) {
 
-const res = await shopifyFetch(url, {
-headers: { "X-Shopify-Access-Token": TOKEN }
-});
+    const res = await shopifyFetch(url,{
+      headers:{ "X-Shopify-Access-Token":TOKEN }
+    });
 
-const data = await res.json();
+    if(!res) break;
 
-allProducts = allProducts.concat(data.products);
+    const data = await res.json();
 
-const link = res.headers.get("link");
+    allProducts = allProducts.concat(data.products);
 
-if (link && link.includes('rel="next"')) {
+    const link = res.headers.get("link");
 
-const match = link.match(/<([^>]+)>; rel="next"/);
+    if (link && link.includes('rel="next"')) {
 
-url = match ? match[1] : null;
+      const match = link.match(/<([^>]+)>; rel="next"/);
 
-} else {
+      url = match ? match[1] : null;
 
-url = null;
+    } else {
 
+      url = null;
+
+    }
+
+  }
+
+  return allProducts;
 }
 
-}
-
-return allProducts;
-
-}
 
 /* ===============================
  MAIN UI
 ================================ */
 
-app.get("/", (req, res) => {
+app.get("/", (req,res)=>{
 
 res.send(`
 <html>
@@ -84,11 +111,6 @@ body{
 font-family:Arial;
 background:#f4f6f8;
 padding:30px;
-}
-
-h1{
-font-size:28px;
-margin-bottom:20px;
 }
 
 .tabs button{
@@ -106,13 +128,8 @@ background:black;
 color:white;
 }
 
-.section{
-display:none;
-}
-
-.active{
-display:block;
-}
+.section{display:none;}
+.active{display:block;}
 
 .card{
 background:white;
@@ -195,7 +212,6 @@ Update Whole Website
 
 </div>
 
-
 <div id="products" class="section">
 
 <div class="card">
@@ -211,11 +227,9 @@ Search
 </div>
 
 <div id="productContainer"></div>
-
 <div class="pagination" id="pagination"></div>
 
 </div>
-
 
 <script>
 
@@ -351,18 +365,16 @@ loadProducts();
 
 </body>
 </html>
-
 `);
 
 });
 
+
 /* ===============================
- PRODUCTS WITH 5000 SUPPORT
+ PRODUCTS API
 ================================ */
 
 app.get("/api/products", async (req,res)=>{
-
-try{
 
 const page = parseInt(req.query.page)||1;
 const q = req.query.q||"";
@@ -389,66 +401,11 @@ currentPage: page,
 totalPages: Math.ceil(filtered.length/limit)
 });
 
-}catch(e){
-
-console.log(e);
-
-res.json({products:[],currentPage:1,totalPages:1});
-
-}
-
 });
 
-/* ===============================
- VARIANTS
-================================ */
-
-app.get("/api/variants/:id", async (req,res)=>{
-
-const r = await shopifyFetch(
-`https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
-{ headers:{ "X-Shopify-Access-Token":TOKEN } }
-);
-
-const data = await r.json();
-
-res.json(data.product.variants);
-
-});
 
 /* ===============================
- SAVE VARIANT CONFIG
-================================ */
-
-app.post("/api/save-variant", async (req,res)=>{
-
-const {id,weight,diamond,making,gst} = req.body;
-
-await shopifyFetch(
-`https://${SHOP}/admin/api/2023-10/variants/${id}/metafields.json`,
-{
-method:"POST",
-headers:{
-"X-Shopify-Access-Token":TOKEN,
-"Content-Type":"application/json"
-},
-body: JSON.stringify({
-metafield:{
-namespace:"custom",
-key:"gold_config",
-type:"json",
-value: JSON.stringify({weight,diamond,making,gst})
-}
-})
-}
-);
-
-res.json({success:true});
-
-});
-
-/* ===============================
- UPDATE WHOLE WEBSITE
+ UPDATE WHOLE WEBSITE PRICE
 ================================ */
 
 app.post("/api/set-gold", async (req,res)=>{
@@ -463,10 +420,14 @@ for(const p of products){
 
 for(const v of p.variants){
 
+try{
+
 const metaRes = await shopifyFetch(
 `https://${SHOP}/admin/api/2023-10/variants/${v.id}/metafields.json`,
 { headers:{ "X-Shopify-Access-Token":TOKEN } }
 );
+
+if(!metaRes) continue;
 
 const metaData = await metaRes.json();
 
@@ -482,9 +443,7 @@ const making = parseFloat(parsed.making||0);
 const gst = parseFloat(parsed.gst||0);
 
 const goldTotal = GLOBAL_GOLD_RATE * weight;
-
 const subtotal = goldTotal + diamond + making;
-
 const final = subtotal + (subtotal*(gst/100));
 
 await shopifyFetch(
@@ -501,9 +460,15 @@ variant:{id:v.id,price:final.toFixed(2)}
 }
 );
 
-console.log("Update Variant:", v.id, "| Product: ", p.title, "| New Price: ", final.toFixed(2));
+console.log("Update Variant:", v.id, "| Product:", p.title, "| Price:", final.toFixed(2));
 
 updated++;
+
+}
+
+}catch(e){
+
+console.log("Skip Variant:", v.id);
 
 }
 
@@ -515,4 +480,5 @@ res.json({updated});
 
 });
 
-app.listen(PORT, ()=>console.log("ANAZIA RUNNING"));
+
+app.listen(PORT,()=>console.log("🚀 ANAZIA GOLD ENGINE RUNNING"));
