@@ -501,6 +501,8 @@ variant:{id:v.id,price:final.toFixed(2)}
 }
 );
 
+console.log("Update Variant:", v.id, "| Product: ", p.title, "| New Price: ", final.toFixed(2));
+
 updated++;
 
 }
