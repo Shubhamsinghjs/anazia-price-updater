@@ -9,52 +9,66 @@ const SHOP = process.env.SHOPIFY_STORE;
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
+if (!SHOP || !TOKEN) {
+  console.log("Missing ENV variables");
+  process.exit(1);
+}
+
 let GLOBAL_GOLD_RATE = 0;
+
+
+/* ===============================
+ SAFE DELAY
+================================ */
+
+function delay(ms){
+  return new Promise(r=>setTimeout(r,ms));
+}
 
 
 /* ===============================
  SAFE SHOPIFY FETCH
 ================================ */
 
-async function shopifyFetch(url, options = {}, retry = 5) {
+async function shopifyFetch(url, options = {}, retry = 5){
 
-  try {
+  try{
 
-    const res = await fetch(url, options);
+    const res = await fetch(url,options);
 
-    if (res.status === 429) {
+    if(res.status === 429){
 
-      console.log("Shopify rate limit... waiting");
+      console.log("Rate limit hit... waiting");
 
-      await new Promise(r => setTimeout(r, 1000));
+      await delay(1500);
 
-      return shopifyFetch(url, options, retry);
+      return shopifyFetch(url,options,retry);
 
     }
 
-    if (!res.ok) {
+    if(!res.ok){
 
       throw new Error("Shopify API Error");
 
     }
 
-    await new Promise(r => setTimeout(r, 400));
+    await delay(600);
 
     return res;
 
-  } catch (err) {
+  }catch(err){
 
-    if (retry > 0) {
+    if(retry > 0){
 
       console.log("Retrying Shopify API...");
 
-      await new Promise(r => setTimeout(r, 1200));
+      await delay(2000);
 
-      return shopifyFetch(url, options, retry - 1);
+      return shopifyFetch(url,options,retry-1);
 
     }
 
-    console.log("API FAILED:", url);
+    console.log("API FAILED:",url);
 
     return null;
 
@@ -67,33 +81,33 @@ async function shopifyFetch(url, options = {}, retry = 5) {
  GET ALL PRODUCTS (5000 SUPPORT)
 ================================ */
 
-async function getAllProducts() {
+async function getAllProducts(){
 
-  let allProducts = [];
+  let products = [];
 
   let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
 
-  while (url) {
+  while(url){
 
-    const res = await shopifyFetch(url, {
-      headers: { "X-Shopify-Access-Token": TOKEN }
+    const res = await shopifyFetch(url,{
+      headers:{ "X-Shopify-Access-Token":TOKEN }
     });
 
-    if (!res) break;
+    if(!res) break;
 
     const data = await res.json();
 
-    allProducts = allProducts.concat(data.products);
+    products = products.concat(data.products);
 
     const link = res.headers.get("link");
 
-    if (link && link.includes('rel="next"')) {
+    if(link && link.includes('rel="next"')){
 
       const match = link.match(/<([^>]+)>; rel="next"/);
 
       url = match ? match[1] : null;
 
-    } else {
+    }else{
 
       url = null;
 
@@ -101,16 +115,30 @@ async function getAllProducts() {
 
   }
 
-  return allProducts;
+  return products;
 
 }
 
 
 /* ===============================
- UPDATE WHOLE WEBSITE
+ MAIN PAGE
 ================================ */
 
-app.post("/api/set-gold", async (req, res) => {
+app.get("/",(req,res)=>{
+
+res.send(`
+<h2>ANAZIA GOLD ENGINE RUNNING</h2>
+<p>Use Shopify app panel to operate.</p>
+`);
+
+});
+
+
+/* ===============================
+ UPDATE GOLD PRICE
+================================ */
+
+app.post("/api/set-gold", async (req,res)=>{
 
   GLOBAL_GOLD_RATE = parseFloat(req.body.rate) || 0;
 
@@ -118,26 +146,26 @@ app.post("/api/set-gold", async (req, res) => {
 
   const products = await getAllProducts();
 
-  console.log("Total Products:", products.length);
+  console.log("Total Products:",products.length);
 
-  for (const p of products) {
+  for(const p of products){
 
-    for (const v of p.variants) {
+    for(const v of p.variants){
 
-      try {
+      try{
 
         const metaRes = await shopifyFetch(
           `https://${SHOP}/admin/api/2023-10/variants/${v.id}/metafields.json`,
-          { headers: { "X-Shopify-Access-Token": TOKEN } }
+          { headers:{ "X-Shopify-Access-Token":TOKEN } }
         );
 
-        if (!metaRes) continue;
+        if(!metaRes) continue;
 
         const metaData = await metaRes.json();
 
-        const config = metaData.metafields.find(m => m.key === "gold_config");
+        const config = metaData.metafields.find(m=>m.key==="gold_config");
 
-        if (!config) continue;
+        if(!config) continue;
 
         const parsed = JSON.parse(config.value);
 
@@ -150,18 +178,18 @@ app.post("/api/set-gold", async (req, res) => {
 
         const subtotal = goldTotal + diamond + making;
 
-        const final = subtotal + (subtotal * gst / 100);
+        const final = subtotal + (subtotal*(gst/100));
 
         await shopifyFetch(
           `https://${SHOP}/admin/api/2023-10/variants/${v.id}.json`,
           {
-            method: "PUT",
-            headers: {
-              "X-Shopify-Access-Token": TOKEN,
-              "Content-Type": "application/json"
+            method:"PUT",
+            headers:{
+              "X-Shopify-Access-Token":TOKEN,
+              "Content-Type":"application/json"
             },
-            body: JSON.stringify({
-              variant: { id: v.id, price: final.toFixed(2) }
+            body:JSON.stringify({
+              variant:{ id:v.id, price:final.toFixed(2) }
             })
           }
         );
@@ -171,15 +199,15 @@ app.post("/api/set-gold", async (req, res) => {
           v.id,
           "| Product:",
           p.title,
-          "| New Price:",
+          "| Price:",
           final.toFixed(2)
         );
 
         updated++;
 
-      } catch (e) {
+      }catch(e){
 
-        console.log("Skip Variant:", v.id);
+        console.log("Skip Variant:",v.id);
 
       }
 
@@ -187,9 +215,13 @@ app.post("/api/set-gold", async (req, res) => {
 
   }
 
-  res.json({ updated });
+  res.json({updated});
 
 });
 
 
-app.listen(PORT, () => console.log("🚀 ANAZIA GOLD ENGINE RUNNING"));
+app.listen(PORT,()=>{
+
+console.log("🚀 ANAZIA GOLD ENGINE RUNNING");
+
+});
