@@ -13,96 +13,105 @@ const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = "./variant-data.json";
 
-let VARIANT_CONFIG = {};
-
-if (fs.existsSync(DATA_FILE)) {
-  VARIANT_CONFIG = JSON.parse(fs.readFileSync(DATA_FILE));
-}
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
 /* ===============================
-SHOPIFY SAFE FETCH
+LOAD CONFIG
 ================================ */
 
-async function shopifyFetch(url, options = {}, retry = 3) {
+let VARIANT_CONFIG = {};
 
-  const res = await fetch(url, options);
-
-  if (res.status === 429) {
-    console.log("Rate limit... waiting");
-    await sleep(1000);
-    if (retry > 0) return shopifyFetch(url, options, retry - 1);
-  }
-
-  if (!res.ok) {
-    const txt = await res.text();
-    console.log("Shopify Error:", txt);
-    throw new Error("Shopify API Error");
-  }
-
-  return res;
+try{
+if(fs.existsSync(DATA_FILE)){
+VARIANT_CONFIG = JSON.parse(fs.readFileSync(DATA_FILE));
+}
+}catch(e){
+VARIANT_CONFIG = {};
 }
 
 /* ===============================
-GET PRODUCTS
+SAVE CONFIG
+================================ */
+
+function saveConfig(){
+fs.writeFileSync(DATA_FILE,JSON.stringify(VARIANT_CONFIG,null,2));
+}
+
+/* ===============================
+SAFE FETCH
+================================ */
+
+async function shopifyFetch(url,options={}){
+
+const res = await fetch(url,options);
+
+if(!res.ok){
+const txt = await res.text();
+console.log("Shopify Error:",txt);
+throw new Error("Shopify API Error");
+}
+
+return res;
+}
+
+/* ===============================
+PRODUCT CACHE
 ================================ */
 
 let PRODUCT_CACHE = [];
 
-async function getAllProducts() {
+async function getAllProducts(){
 
-  if (PRODUCT_CACHE.length > 0) return PRODUCT_CACHE;
+if(PRODUCT_CACHE.length>0) return PRODUCT_CACHE;
 
-  let products = [];
-  let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
+let products=[];
+let url=`https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
 
-  while (url) {
+while(url){
 
-    const res = await shopifyFetch(url, {
-      headers: { "X-Shopify-Access-Token": TOKEN }
-    });
+const res = await shopifyFetch(url,{
+headers:{
+"X-Shopify-Access-Token":TOKEN
+}
+});
 
-    const data = await res.json();
+const data = await res.json();
 
-    products = products.concat(data.products);
+products = products.concat(data.products);
 
-    const link = res.headers.get("link");
+const link = res.headers.get("link");
 
-    if (link && link.includes('rel="next"')) {
-      const match = link.match(/<([^>]+)>; rel="next"/);
-      url = match ? match[1] : null;
-    } else {
-      url = null;
-    }
+if(link && link.includes('rel="next"')){
+const match = link.match(/<([^>]+)>; rel="next"/);
+url = match ? match[1] : null;
+}else{
+url = null;
+}
 
-  }
+}
 
-  PRODUCT_CACHE = products;
+PRODUCT_CACHE = products;
 
-  console.log("Products fetched:", products.length);
+console.log("Products loaded:",products.length);
 
-  return products;
+return products;
+
 }
 
 /* ===============================
 UI
 ================================ */
 
-app.get("/", (req, res) => {
+app.get("/",(req,res)=>{
 
 res.send(`
-
 <html>
 <head>
-
 <title>ANAZIA GOLD PANEL</title>
 
 <style>
 
 body{
 font-family:Arial;
-background:#f2f4f7;
+background:#f4f6f8;
 padding:30px;
 }
 
@@ -126,28 +135,23 @@ background:black;
 color:white;
 }
 
-.section{
-display:none;
-}
-
-.active{
-display:block;
-}
+.section{display:none}
+.active{display:block}
 
 .card{
 background:white;
 padding:20px;
 border-radius:10px;
-box-shadow:0 3px 10px rgba(0,0,0,0.1);
+box-shadow:0 3px 8px rgba(0,0,0,0.08);
 margin-bottom:20px;
 }
 
 .product{
 background:white;
-border-radius:8px;
 padding:15px;
-margin-bottom:12px;
-box-shadow:0 2px 6px rgba(0,0,0,0.08);
+margin-bottom:10px;
+border-radius:8px;
+box-shadow:0 2px 5px rgba(0,0,0,0.05);
 }
 
 .variant{
@@ -155,27 +159,19 @@ background:#fafafa;
 padding:10px;
 margin-top:10px;
 border-radius:6px;
-border:1px solid #eee;
 }
 
-button.primary{
-padding:8px 16px;
+button{
+padding:6px 12px;
+border:none;
 background:black;
 color:white;
-border:none;
 border-radius:6px;
 cursor:pointer;
 }
 
 input{
-padding:8px;
-border:1px solid #ddd;
-border-radius:6px;
-margin-right:6px;
-}
-
-.pagination button{
-padding:6px 12px;
+padding:6px;
 margin-right:5px;
 }
 
@@ -196,11 +192,11 @@ margin-right:5px;
 
 <div class="card">
 
-<h3>Gold Rate ₹/gram</h3>
+Gold Rate ₹/gram
 
-<input id="goldRate" placeholder="Enter gold rate">
+<input id="goldRate">
 
-<button class="primary" onclick="updateGold()">
+<button onclick="updateGold()">
 Update Whole Website
 </button>
 
@@ -216,7 +212,7 @@ Update Whole Website
 
 <input id="searchInput" placeholder="Search product">
 
-<button onclick="loadProducts(1)" class="primary">
+<button onclick="loadProducts(1)">
 Search
 </button>
 
@@ -230,7 +226,7 @@ Search
 
 <script>
 
-let currentPage = 1;
+let currentPage=1;
 
 function showTab(id){
 
@@ -243,7 +239,7 @@ document.getElementById(id).classList.add("active");
 
 async function updateGold(){
 
-const rate = document.getElementById("goldRate").value;
+const rate=document.getElementById("goldRate").value;
 
 document.getElementById("status").innerText="Updating...";
 
@@ -255,7 +251,7 @@ body: JSON.stringify({rate})
 
 const data = await res.json();
 
-document.getElementById("status").innerText="Updated "+data.updated+" variants";
+document.getElementById("status").innerText="Updated "+data.updated;
 
 }
 
@@ -279,7 +275,7 @@ html+=\`
 
 <b>\${p.title}</b>
 
-<button onclick="loadVariants(\${p.id})" class="primary">
+<button onclick="loadVariants(\${p.id})">
 Configure
 </button>
 
@@ -292,18 +288,6 @@ Configure
 });
 
 document.getElementById("productContainer").innerHTML=html;
-
-let pag="";
-
-if(data.currentPage>1){
-pag+=\`<button onclick="loadProducts(\${data.currentPage-1})">Prev</button>\`;
-}
-
-if(data.currentPage<data.totalPages){
-pag+=\`<button onclick="loadProducts(\${data.currentPage+1})">Next</button>\`;
-}
-
-document.getElementById("pagination").innerHTML=pag;
 
 }
 
@@ -363,7 +347,6 @@ loadProducts();
 
 </body>
 </html>
-
 `);
 
 });
@@ -372,7 +355,7 @@ loadProducts();
 PRODUCT API
 ================================ */
 
-app.get("/api/products", async (req,res)=>{
+app.get("/api/products",async(req,res)=>{
 
 const page=parseInt(req.query.page)||1;
 const limit=20;
@@ -401,13 +384,11 @@ totalPages:Math.ceil(filtered.length/limit)
 VARIANTS
 ================================ */
 
-app.get("/api/variants/:id", async (req,res)=>{
+app.get("/api/variants/:id",async(req,res)=>{
 
 const r = await shopifyFetch(
 `https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
-{
-headers:{ "X-Shopify-Access-Token":TOKEN }
-}
+{ headers:{ "X-Shopify-Access-Token":TOKEN } }
 );
 
 const data = await r.json();
@@ -426,7 +407,7 @@ const {id,weight,diamond,making,gst} = req.body;
 
 VARIANT_CONFIG[id]={weight,diamond,making,gst};
 
-fs.writeFileSync(DATA_FILE,JSON.stringify(VARIANT_CONFIG,null,2));
+saveConfig();
 
 console.log("Saved config:",id);
 
@@ -438,7 +419,7 @@ res.json({success:true});
 UPDATE PRICE
 ================================ */
 
-app.post("/api/set-gold", async (req,res)=>{
+app.post("/api/set-gold",async(req,res)=>{
 
 const rate=parseFloat(req.body.rate)||0;
 
@@ -448,9 +429,18 @@ for(const id in VARIANT_CONFIG){
 
 const conf=VARIANT_CONFIG[id];
 
-const gold=rate*(conf.weight||0);
-const subtotal=gold+(conf.diamond||0)+(conf.making||0);
-const final=subtotal+(subtotal*((conf.gst||0)/100));
+const weight=parseFloat(conf.weight||0);
+const diamond=parseFloat(conf.diamond||0);
+const making=parseFloat(conf.making||0);
+const gst=parseFloat(conf.gst||0);
+
+const gold=rate*weight;
+
+const subtotal=gold+diamond+making;
+
+const final=subtotal+(subtotal*(gst/100));
+
+const price=Number(final).toFixed(2);
 
 await shopifyFetch(
 `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
@@ -461,16 +451,14 @@ headers:{
 "Content-Type":"application/json"
 },
 body:JSON.stringify({
-variant:{id:id,price:final.toFixed(2)}
+variant:{id:id,price:price}
 })
 }
 );
 
-console.log("Updated Variant:",id,"Price:",final);
+console.log("Updated:",id,price);
 
 updated++;
-
-await sleep(400);
 
 }
 
