@@ -440,7 +440,8 @@ const subtotal=gold+diamond+making;
 
 const final=subtotal+(subtotal*(gst/100));
 
-const price=Number(final).toFixed(2);
+// const price=Number(final).toFixed(2);
+const price=parseFloat(final || 0).toFixed(2);
 
 await shopifyFetch(
 `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
@@ -457,6 +458,9 @@ variant:{id:id,price:price}
 );
 
 console.log("Updated:",id,price);
+
+/* API LIMIT FIX */
+await new Promise(r => setTimeout(r, 600));
 
 updated++;
 
