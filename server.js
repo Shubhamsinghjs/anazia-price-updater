@@ -7,6 +7,8 @@ const fs = require("fs");
 const app = express();
 app.use(express.json());
 
+let GLOBAL_GOLD_RATE = 0;
+
 const SHOP = process.env.SHOPIFY_STORE;
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
