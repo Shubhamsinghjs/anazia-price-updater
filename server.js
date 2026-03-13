@@ -1,12 +1,13 @@
 require("dotenv").config({ path: ".env" });
 const cors = require("cors");
-app.use(cors());
 
 const express = require("express");
 const fetch = require("node-fetch");
 const fs = require("fs");
 
 const app = express();
+
+app.use(cors());
 app.use(express.json());
 
 let GLOBAL_GOLD_RATE = 0;
