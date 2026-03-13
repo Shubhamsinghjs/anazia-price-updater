@@ -3,11 +3,8 @@ require("dotenv").config({ path: ".env" });
 const express = require("express");
 const fetch = require("node-fetch");
 const fs = require("fs");
-const cors = require("cors");
 
 const app = express();
-
-app.use(cors());
 app.use(express.json());
 
 const SHOP = process.env.SHOPIFY_STORE;
@@ -22,43 +19,37 @@ LOAD CONFIG
 
 let VARIANT_CONFIG = {};
 
-if (fs.existsSync(DATA_FILE)) {
-  VARIANT_CONFIG = JSON.parse(fs.readFileSync(DATA_FILE));
+try{
+if(fs.existsSync(DATA_FILE)){
+VARIANT_CONFIG = JSON.parse(fs.readFileSync(DATA_FILE));
+}
+}catch(e){
+VARIANT_CONFIG = {};
 }
 
 /* ===============================
 SAVE CONFIG
 ================================ */
 
-function saveConfig() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(VARIANT_CONFIG, null, 2));
+function saveConfig(){
+fs.writeFileSync(DATA_FILE,JSON.stringify(VARIANT_CONFIG,null,2));
 }
 
 /* ===============================
 SAFE FETCH
 ================================ */
 
-async function shopifyFetch(url, options = {}) {
+async function shopifyFetch(url,options={}){
 
-  try {
+const res = await fetch(url,options);
 
-    const res = await fetch(url, options);
+if(!res.ok){
+const txt = await res.text();
+console.log("Shopify Error:",txt);
+throw new Error("Shopify API Error");
+}
 
-    if (!res.ok) {
-      const txt = await res.text();
-      console.log("Shopify Error:", txt);
-      return null;
-    }
-
-    return res;
-
-  } catch (err) {
-
-    console.log("Fetch error:", err.message);
-    return null;
-
-  }
-
+return res;
 }
 
 /* ===============================
@@ -67,47 +58,41 @@ PRODUCT CACHE
 
 let PRODUCT_CACHE = [];
 
-async function getAllProducts() {
+async function getAllProducts(){
 
-  if (PRODUCT_CACHE.length > 0) return PRODUCT_CACHE;
+if(PRODUCT_CACHE.length>0) return PRODUCT_CACHE;
 
-  let products = [];
-  let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
+let products=[];
+let url=`https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
 
-  while (url) {
+while(url){
 
-    const res = await shopifyFetch(url, {
-      headers: {
-        "X-Shopify-Access-Token": TOKEN
-      }
-    });
+const res = await shopifyFetch(url,{
+headers:{
+"X-Shopify-Access-Token":TOKEN
+}
+});
 
-    if (!res) break;
+const data = await res.json();
 
-    const data = await res.json();
+products = products.concat(data.products);
 
-    products = products.concat(data.products);
+const link = res.headers.get("link");
 
-    const link = res.headers.get("link");
+if(link && link.includes('rel="next"')){
+const match = link.match(/<([^>]+)>; rel="next"/);
+url = match ? match[1] : null;
+}else{
+url = null;
+}
 
-    if (link && link.includes('rel="next"')) {
+}
 
-      const match = link.match(/<([^>]+)>; rel="next"/);
-      url = match ? match[1] : null;
+PRODUCT_CACHE = products;
 
-    } else {
+console.log("Products loaded:",products.length);
 
-      url = null;
-
-    }
-
-  }
-
-  PRODUCT_CACHE = products;
-
-  console.log("Products loaded:", products.length);
-
-  return products;
+return products;
 
 }
 
@@ -115,14 +100,11 @@ async function getAllProducts() {
 UI
 ================================ */
 
-app.get("/", (req, res) => {
+app.get("/",(req,res)=>{
 
 res.send(`
-
 <html>
-
 <head>
-
 <title>ANAZIA GOLD PANEL</title>
 
 <style>
@@ -237,6 +219,8 @@ Search
 </div>
 
 <div id="productContainer"></div>
+
+<div id="pagination"></div>
 
 </div>
 
@@ -362,9 +346,7 @@ loadProducts();
 </script>
 
 </body>
-
 </html>
-
 `);
 
 });
@@ -373,26 +355,27 @@ loadProducts();
 PRODUCT API
 ================================ */
 
-app.get("/api/products", async (req, res) => {
+app.get("/api/products",async(req,res)=>{
 
-const page = parseInt(req.query.page) || 1;
-const limit = 20;
-const q = req.query.q || "";
+const page=parseInt(req.query.page)||1;
+const limit=20;
+const q=req.query.q||"";
 
-const products = await getAllProducts();
+const products=await getAllProducts();
 
-let filtered = products;
+let filtered=products;
 
-if (q) {
-filtered = products.filter(p => p.title.toLowerCase().includes(q.toLowerCase()));
+if(q){
+filtered=products.filter(p=>p.title.toLowerCase().includes(q.toLowerCase()));
 }
 
-const start = (page - 1) * limit;
-const end = start + limit;
+const start=(page-1)*limit;
+const end=start+limit;
 
 res.json({
-products: filtered.slice(start, end),
-currentPage: page
+products:filtered.slice(start,end),
+currentPage:page,
+totalPages:Math.ceil(filtered.length/limit)
 });
 
 });
@@ -401,14 +384,12 @@ currentPage: page
 VARIANTS
 ================================ */
 
-app.get("/api/variants/:id", async (req, res) => {
+app.get("/api/variants/:id",async(req,res)=>{
 
 const r = await shopifyFetch(
-`https://${SHOP}/admin/api/2023-10/products/\${req.params.id}.json`,
-{ headers: { "X-Shopify-Access-Token": TOKEN } }
+`https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
+{ headers:{ "X-Shopify-Access-Token":TOKEN } }
 );
-
-if (!r) return res.json([]);
 
 const data = await r.json();
 
@@ -420,17 +401,17 @@ res.json(data.product.variants);
 SAVE VARIANT
 ================================ */
 
-app.post("/api/save-variant", (req, res) => {
+app.post("/api/save-variant",(req,res)=>{
 
-const { id, weight, diamond, making, gst } = req.body;
+const {id,weight,diamond,making,gst} = req.body;
 
-VARIANT_CONFIG[id] = { weight, diamond, making, gst };
+VARIANT_CONFIG[id]={weight,diamond,making,gst};
 
 saveConfig();
 
-console.log("Saved config:", id);
+console.log("Saved config:",id);
 
-res.json({ success: true });
+res.json({success:true});
 
 });
 
@@ -438,49 +419,50 @@ res.json({ success: true });
 UPDATE PRICE
 ================================ */
 
-app.post("/api/set-gold", async (req, res) => {
+app.post("/api/set-gold",async(req,res)=>{
 
-const rate = parseFloat(req.body.rate) || 0;
+const rate=parseFloat(req.body.rate)||0;
 
-let updated = 0;
+let updated=0;
 
-for (const id in VARIANT_CONFIG) {
+for(const id in VARIANT_CONFIG){
 
-const conf = VARIANT_CONFIG[id];
+const conf=VARIANT_CONFIG[id];
 
-const weight = parseFloat(conf.weight || 0);
-const diamond = parseFloat(conf.diamond || 0);
-const making = parseFloat(conf.making || 0);
-const gst = parseFloat(conf.gst || 0);
+const weight=parseFloat(conf.weight||0);
+const diamond=parseFloat(conf.diamond||0);
+const making=parseFloat(conf.making||0);
+const gst=parseFloat(conf.gst||0);
 
-const gold = rate * weight;
+const gold=rate*weight;
 
-const subtotal = gold + diamond + making;
+const subtotal=gold+diamond+making;
 
-const final = subtotal + (subtotal * (gst / 100));
+const final=subtotal+(subtotal*(gst/100));
 
-const price = parseFloat(final).toFixed(2);
+// const price=Number(final).toFixed(2);
+const price=parseFloat(final || 0).toFixed(2);
 
-const r = await shopifyFetch(
-`https://${SHOP}/admin/api/2023-10/variants/\${id}.json`,
+await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
 {
 method:"PUT",
 headers:{
 "X-Shopify-Access-Token":TOKEN,
 "Content-Type":"application/json"
 },
-body:JSON.stringify({variant:{id:id,price:price}})
+body:JSON.stringify({
+variant:{id:id,price:price}
+})
 }
 );
 
-if(r){
 console.log("Updated:",id,price);
+
+/* API LIMIT FIX */
+await new Promise(r => setTimeout(r, 900));
+
 updated++;
-}
-
-/* DELAY FIX (API LIMIT SAFE) */
-
-await new Promise(r=>setTimeout(r,900));
 
 }
 
@@ -489,7 +471,5 @@ res.json({updated});
 });
 
 app.listen(PORT,()=>{
-
 console.log("ANAZIA SERVER RUNNING");
-
 });
