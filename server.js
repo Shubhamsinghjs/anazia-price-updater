@@ -35,7 +35,7 @@ function saveConfig() {
 }
 
 /* ===============================
-SAFE SHOPIFY REQUEST
+SAFE SHOPIFY FETCH
 ================================ */
 
 async function shopifyFetch(url, options = {}) {
@@ -62,91 +62,178 @@ async function shopifyFetch(url, options = {}) {
 }
 
 /* ===============================
+APP UI
+================================ */
+
+app.get("/", (req, res) => {
+
+res.send(`
+<html>
+<head>
+<title>Anazia Price Updater</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#f5f6f8;
+padding:40px;
+}
+
+.card{
+background:white;
+padding:30px;
+border-radius:10px;
+width:400px;
+box-shadow:0 3px 10px rgba(0,0,0,0.1);
+}
+
+button{
+padding:10px 20px;
+border:none;
+background:black;
+color:white;
+cursor:pointer;
+border-radius:6px;
+}
+
+input{
+padding:8px;
+width:120px;
+margin-right:10px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>Anazia Gold Price Updater</h2>
+
+<div class="card">
+
+Gold Rate ₹/gram
+
+<br><br>
+
+<input id="rate">
+
+<button onclick="update()">Update Prices</button>
+
+<p id="status"></p>
+
+</div>
+
+<script>
+
+async function update(){
+
+const rate=document.getElementById("rate").value;
+
+document.getElementById("status").innerText="Updating...";
+
+const res = await fetch('/api/set-gold',{
+method:"POST",
+headers:{ "Content-Type":"application/json" },
+body: JSON.stringify({rate})
+});
+
+const data = await res.json();
+
+document.getElementById("status").innerText="Updated "+data.updated+" variants";
+
+}
+
+</script>
+
+</body>
+</html>
+`);
+
+});
+
+/* ===============================
 SAVE VARIANT CONFIG
 ================================ */
 
 app.post("/api/save-variant", (req, res) => {
 
-  const { id, weight, diamond, making, gst } = req.body;
+const { id, weight, diamond, making, gst } = req.body;
 
-  VARIANT_CONFIG[id] = { weight, diamond, making, gst };
+VARIANT_CONFIG[id] = { weight, diamond, making, gst };
 
-  saveConfig();
+saveConfig();
 
-  console.log("Saved:", id);
+console.log("Saved:", id);
 
-  res.json({ success: true });
+res.json({ success: true });
 
 });
 
 /* ===============================
-UPDATE SHOPIFY VARIANT PRICES
+UPDATE VARIANT PRICES
 ================================ */
 
 app.post("/api/set-gold", async (req, res) => {
 
-  const rate = parseFloat(req.body.rate) || 0;
+const rate = parseFloat(req.body.rate) || 0;
 
-  let updated = 0;
+let updated = 0;
 
-  console.log("Starting price update...");
+console.log("Starting update...");
 
-  for (const id in VARIANT_CONFIG) {
+for (const id in VARIANT_CONFIG) {
 
-    const conf = VARIANT_CONFIG[id];
+const conf = VARIANT_CONFIG[id];
 
-    const weight = parseFloat(conf.weight || 0);
-    const diamond = parseFloat(conf.diamond || 0);
-    const making = parseFloat(conf.making || 0);
-    const gst = parseFloat(conf.gst || 3);
+const weight = parseFloat(conf.weight || 0);
+const diamond = parseFloat(conf.diamond || 0);
+const making = parseFloat(conf.making || 0);
+const gst = parseFloat(conf.gst || 3);
 
-    const gold = rate * weight;
+const gold = rate * weight;
 
-    const subtotal = gold + diamond + making;
+const subtotal = gold + diamond + making;
 
-    const final = subtotal + (subtotal * (gst / 100));
+const final = subtotal + (subtotal * (gst / 100));
 
-    const price = parseFloat(final).toFixed(2);
+const price = parseFloat(final).toFixed(2);
 
-    const resShopify = await shopifyFetch(
-      `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
-      {
-        method: "PUT",
-        headers: {
-          "X-Shopify-Access-Token": TOKEN,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          variant: {
-            id: id,
-            price: price
-          }
-        })
-      }
-    );
+const resShopify = await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/variants/\${id}.json`,
+{
+method: "PUT",
+headers: {
+"X-Shopify-Access-Token": TOKEN,
+"Content-Type": "application/json"
+},
+body: JSON.stringify({
+variant: { id: id, price: price }
+})
+}
+);
 
-    if (resShopify) {
+if (resShopify) {
 
-      console.log("Updated:", id, price);
-      updated++;
+console.log("Updated:", id, price);
+updated++;
 
-    } else {
+} else {
 
-      console.log("Skipped:", id);
+console.log("Skipped:", id);
 
-    }
+}
 
-    /* ===============================
-       RATE LIMIT PROTECTION
-    =============================== */
+/* RATE LIMIT FIX */
 
-    await new Promise(r => setTimeout(r, 800));
+await new Promise(r => setTimeout(r, 800));
 
-  }
+}
 
-  console.log("Update finished:", updated);
+console.log("Update finished:", updated);
 
-  res.json({ updated });
+res.json({ updated });
 
 });
 
@@ -155,5 +242,5 @@ SERVER
 ================================ */
 
 app.listen(PORT, () => {
-  console.log("ANAZIA SERVER RUNNING ON PORT", PORT);
+console.log("ANAZIA SERVER RUNNING ON", PORT);
 });
