@@ -13,141 +13,131 @@ const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = "./variant-data.json";
 
-let VARIANT_CONFIG = {};
+let VARIANT_CONFIG = fs.existsSync(DATA_FILE)
+  ? JSON.parse(fs.readFileSync(DATA_FILE))
+  : {};
 
-if (fs.existsSync(DATA_FILE)) {
-  VARIANT_CONFIG = JSON.parse(fs.readFileSync(DATA_FILE));
+function saveConfig(){
+  fs.writeFileSync(DATA_FILE, JSON.stringify(VARIANT_CONFIG,null,2));
 }
 
-function saveConfig() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(VARIANT_CONFIG, null, 2));
-}
+/* ================= SHOPIFY ================= */
 
-/* =========================
-SHOPIFY FETCH
-========================= */
+async function shopifyFetch(url,options={}){
+  const res = await fetch(url,options);
 
-async function shopifyFetch(url, options = {}) {
-  const res = await fetch(url, options);
-
-  if (!res.ok) {
+  if(!res.ok){
     const txt = await res.text();
-    console.log("Shopify Error:", txt);
+    console.log("❌ Shopify Error:",txt);
     return null;
   }
-
   return res;
 }
 
-/* =========================
-PRODUCT CACHE
-========================= */
+/* ================= PRODUCTS ================= */
 
-let PRODUCT_CACHE = [];
+let PRODUCT_CACHE=[];
 
-async function getAllProducts() {
-  if (PRODUCT_CACHE.length > 0) return PRODUCT_CACHE;
+async function getAllProducts(){
 
-  let products = [];
-  let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
+  if(PRODUCT_CACHE.length>0) return PRODUCT_CACHE;
 
-  while (url) {
-    const res = await shopifyFetch(url, {
-      headers: { "X-Shopify-Access-Token": TOKEN }
+  let products=[];
+  let url=`https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
+
+  while(url){
+
+    const res=await shopifyFetch(url,{
+      headers:{ "X-Shopify-Access-Token":TOKEN }
     });
 
-    if (!res) break;
+    if(!res) break;
 
-    const data = await res.json();
-    products = products.concat(data.products);
+    const data=await res.json();
+    products=products.concat(data.products);
 
-    const link = res.headers.get("link");
+    const link=res.headers.get("link");
 
-    if (link && link.includes('rel="next"')) {
-      const match = link.match(/<([^>]+)>; rel="next"/);
-      url = match ? match[1] : null;
-    } else {
-      url = null;
+    if(link && link.includes('rel="next"')){
+      const match=link.match(/<([^>]+)>; rel="next"/);
+      url=match ? match[1] : null;
+    }else{
+      url=null;
     }
   }
 
-  PRODUCT_CACHE = products;
-  console.log("Products Loaded:", products.length);
+  PRODUCT_CACHE=products;
+
+  console.log("Products Loaded:",products.length);
 
   return products;
 }
 
-/* =========================
-UI PANEL
-========================= */
+/* ================= UI ================= */
 
-app.get("/", (req, res) => {
-  res.send(`
+app.get("/",(req,res)=>{
+
+res.send(`
+
 <html>
 <head>
+
 <title>ANAZIA GOLD PANEL</title>
 
 <style>
-body{
-  font-family:Arial;
-  background:#f3f5f7;
-  padding:30px;
+body{font-family:Arial;background:#f3f5f7;padding:30px;}
+h1{margin-bottom:20px;}
+
+.tabs button{
+padding:10px 20px;
+border:none;
+background:#ddd;
+margin-right:10px;
+cursor:pointer;
+border-radius:6px;
 }
 
-h1{
-  margin-bottom:20px;
+.tabs button:hover{
+background:black;color:white;
 }
+
+.section{display:none;}
+.active{display:block;}
 
 .card{
-  background:white;
-  padding:20px;
-  border-radius:10px;
-  margin-bottom:20px;
-  box-shadow:0 3px 8px rgba(0,0,0,0.08);
+background:white;
+padding:20px;
+border-radius:10px;
+margin-bottom:20px;
+box-shadow:0 3px 8px rgba(0,0,0,0.08);
 }
 
 .product{
-  background:white;
-  padding:15px;
-  margin-bottom:10px;
-  border-radius:8px;
+background:white;
+padding:15px;
+margin-bottom:10px;
+border-radius:8px;
 }
 
 .variant{
-  background:#fafafa;
-  padding:12px;
-  margin-top:10px;
-  border-radius:6px;
+background:#fafafa;
+padding:10px;
+margin-top:10px;
+border-radius:6px;
 }
 
 button{
-  padding:6px 12px;
-  background:black;
-  color:white;
-  border:none;
-  border-radius:6px;
-  cursor:pointer;
+padding:6px 12px;
+background:black;
+color:white;
+border:none;
+border-radius:6px;
+cursor:pointer;
 }
 
 input{
-  padding:6px;
-  margin:5px;
-  width:120px;
-}
-
-.kt-badge{
-  padding:3px 8px;
-  border-radius:5px;
-  font-size:12px;
-  margin-left:10px;
-}
-
-.kt12{background:#e3f2fd;color:#1565c0;}
-.kt14{background:#fce4ec;color:#c2185b;}
-
-.saved{
-  color:green;
-  font-size:12px;
+padding:6px;
+margin-right:5px;
 }
 </style>
 
@@ -157,7 +147,13 @@ input{
 
 <h1>ANAZIA GOLD PRICING PANEL</h1>
 
-<!-- 🔥 GOLD RATE PANEL -->
+<div class="tabs">
+<button onclick="showTab('pricing')">Pricing Panel</button>
+<button onclick="showTab('products')">Products</button>
+</div>
+
+<div id="pricing" class="section active">
+
 <div class="card">
 
 <b>Gold 12KT ₹/gram</b><br>
@@ -172,7 +168,10 @@ input{
 
 </div>
 
-<!-- 🔥 SEARCH -->
+</div>
+
+<div id="products" class="section">
+
 <div class="card">
 
 <input id="searchInput" placeholder="Search product">
@@ -182,11 +181,17 @@ input{
 
 <div id="productContainer"></div>
 
+</div>
+
 <script>
 
-/* =========================
-UPDATE GOLD
-========================= */
+function showTab(id){
+document.getElementById("pricing").classList.remove("active");
+document.getElementById("products").classList.remove("active");
+document.getElementById(id).classList.add("active");
+}
+
+/* UPDATE */
 
 async function updateGold(){
 
@@ -203,13 +208,11 @@ body:JSON.stringify({rate12,rate14})
 
 const data=await res.json();
 
-document.getElementById("status").innerText="✅ Updated "+data.updated+" variants";
+document.getElementById("status").innerText="Updated "+data.updated;
 
 }
 
-/* =========================
-LOAD PRODUCTS
-========================= */
+/* PRODUCTS */
 
 async function loadProducts(){
 
@@ -223,23 +226,16 @@ let html="";
 data.products.forEach(p=>{
 html+=\`
 <div class="product">
-
 <b>\${p.title}</b>
-
 <button onclick="loadVariants(\${p.id})">Configure</button>
-
-<div id="v-\${p.id}"></div>
-
+<div id="variants-\${p.id}"></div>
 </div>\`;
 });
 
 document.getElementById("productContainer").innerHTML=html;
-
 }
 
-/* =========================
-LOAD VARIANTS
-========================= */
+/* VARIANTS */
 
 async function loadVariants(id){
 
@@ -250,57 +246,32 @@ let html="";
 
 variants.forEach(v=>{
 
-let kt="14KT";
-let badge="kt14";
-
-if(v.title.toUpperCase().includes("12KT")){
-  kt="12KT";
-  badge="kt12";
-}
-
 html+=\`
 <div class="variant">
+<b>\${v.title}</b><br>
 
-<b>\${v.title}</b>
-<span class="kt-badge \${badge}">\${kt}</span>
+Weight <input id="weight-\${v.id}">
+Diamond <input id="diamond-\${v.id}">
+Making <input id="making-\${v.id}">
+GST <input id="gst-\${v.id}">
 
-<br><br>
-
-Weight <input id="w-\${v.id}">
-Diamond <input id="d-\${v.id}">
-Making <input id="m-\${v.id}">
-GST <input id="g-\${v.id}">
-
-<br><br>
-
-<button onclick="saveVariant(\${v.id},'\${v.title}')">
-Save
-</button>
-
-<span id="status-\${v.id}" class="saved"></span>
-
-<br><br>
-
-<small>Variant ID: \${v.id}</small>
+<button onclick="saveVariant(\${v.id},'\${v.title}')">Save</button>
 
 </div>\`;
 
 });
 
-document.getElementById("v-"+id).innerHTML=html;
-
+document.getElementById("variants-"+id).innerHTML=html;
 }
 
-/* =========================
-SAVE VARIANT
-========================= */
+/* SAVE */
 
 async function saveVariant(id,title){
 
-const weight=document.getElementById("w-"+id).value;
-const diamond=document.getElementById("d-"+id).value;
-const making=document.getElementById("m-"+id).value;
-const gst=document.getElementById("g-"+id).value;
+const weight=document.getElementById("weight-"+id).value;
+const diamond=document.getElementById("diamond-"+id).value;
+const making=document.getElementById("making-"+id).value;
+const gst=document.getElementById("gst-"+id).value;
 
 await fetch('/api/save-variant',{
 method:"POST",
@@ -308,11 +279,9 @@ headers:{"Content-Type":"application/json"},
 body:JSON.stringify({id,weight,diamond,making,gst,title})
 });
 
-document.getElementById("status-"+id).innerText="✅ Saved";
+alert("Saved");
 
 }
-
-/* ========================= */
 
 loadProducts();
 
@@ -320,107 +289,76 @@ loadProducts();
 
 </body>
 </html>
+
 `);
 });
 
-/* =========================
-API
-========================= */
+/* SAVE VARIANT */
 
-app.get("/api/products", async (req, res) => {
-  const q = req.query.q || "";
-  const products = await getAllProducts();
+app.post("/api/save-variant",(req,res)=>{
 
-  const filtered = products.filter(p =>
-    p.title.toLowerCase().includes(q.toLowerCase())
-  );
+const {id,weight,diamond,making,gst,title}=req.body;
 
-  res.json({ products: filtered.slice(0, 20) });
+const kt = title.toUpperCase().includes("12KT") ? "12KT" : "14KT";
+
+VARIANT_CONFIG[id]={weight,diamond,making,gst,kt,title};
+
+saveConfig();
+
+console.log("✅ SAVED:",id,kt,title);
+
+res.json({success:true});
+
 });
 
-app.get("/api/variants/:id", async (req, res) => {
-  const r = await shopifyFetch(
-    `https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
-    { headers: { "X-Shopify-Access-Token": TOKEN } }
-  );
+/* UPDATE FAST */
 
-  if (!r) return res.json([]);
+app.post("/api/set-gold",async(req,res)=>{
 
-  const data = await r.json();
-  res.json(data.product.variants);
+const rate12=parseFloat(req.body.rate12)||0;
+const rate14=parseFloat(req.body.rate14)||0;
+
+let updated=0;
+
+for(const id in VARIANT_CONFIG){
+
+const v=VARIANT_CONFIG[id];
+
+const rate = v.kt==="12KT" ? rate12 : rate14;
+
+const gold=rate*(v.weight||0);
+const subtotal=gold+(+v.diamond||0)+(+v.making||0);
+const final=subtotal+(subtotal*((+v.gst||0)/100));
+
+const price=final.toFixed(2);
+
+await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/variants/\${id}.json`,
+{
+method:"PUT",
+headers:{
+"X-Shopify-Access-Token":TOKEN,
+"Content-Type":"application/json"
+},
+body:JSON.stringify({variant:{id,price}})
+}
+);
+
+updated++;
+
+console.log("🔥 UPDATED:",id,v.kt,price);
+
+/* FAST DELAY */
+await new Promise(r=>setTimeout(r,300));
+
+}
+
+res.json({updated});
+
 });
 
-/* SAVE */
+/* ================= SERVER ================= */
 
-app.post("/api/save-variant", (req, res) => {
-  const { id, weight, diamond, making, gst, title } = req.body;
-
-  let kt = "14KT";
-
-  if (title.toUpperCase().includes("12KT")) kt = "12KT";
-  if (title.toUpperCase().includes("14KT")) kt = "14KT";
-
-  VARIANT_CONFIG[id] = { weight, diamond, making, gst, kt };
-
-  saveConfig();
-
-  console.log("SAVED:", id, kt);
-
-  res.json({ success: true });
-});
-
-/* UPDATE */
-
-app.post("/api/set-gold", async (req, res) => {
-  const rate12 = parseFloat(req.body.rate12) || 0;
-  const rate14 = parseFloat(req.body.rate14) || 0;
-
-  let updated = 0;
-
-  for (const id in VARIANT_CONFIG) {
-    const conf = VARIANT_CONFIG[id];
-
-    const weight = parseFloat(conf.weight || 0);
-    const diamond = parseFloat(conf.diamond || 0);
-    const making = parseFloat(conf.making || 0);
-    const gst = parseFloat(conf.gst || 0);
-
-    const rate = conf.kt === "12KT" ? rate12 : rate14;
-
-    const gold = rate * weight;
-    const subtotal = gold + diamond + making;
-    const final = subtotal + subtotal * (gst / 100);
-
-    const price = final.toFixed(2);
-
-    await shopifyFetch(
-      `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
-      {
-        method: "PUT",
-        headers: {
-          "X-Shopify-Access-Token": TOKEN,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          variant: { id, price }
-        })
-      }
-    );
-
-    console.log("UPDATED:", id, conf.kt, price);
-
-    updated++;
-
-    await new Promise(r => setTimeout(r, 1200));
-  }
-
-  res.json({ updated });
-});
-
-/* =========================
-SERVER
-========================= */
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("ANAZIA SERVER RUNNING");
+app.listen(PORT,"0.0.0.0",()=>{
+console.log("🚀 SERVER RUNNING");
 });
