@@ -74,15 +74,7 @@ async function getAllProducts(){
   return products;
 }
 
-/* 🔥 CLEAR CACHE */
-
-app.get("/api/clear-cache",(req,res)=>{
-  PRODUCT_CACHE=[];
-  console.log("🧹 Cache Cleared");
-  res.send("Cache cleared");
-});
-
-/* ================= UI SAME ================= */
+/* ================= UI ================= */
 
 app.get("/",(req,res)=>{
 
@@ -94,6 +86,7 @@ res.send(`
 <title>ANAZIA GOLD PANEL</title>
 
 <style>
+
 body{font-family:Arial;background:#f3f5f7;padding:30px;}
 h1{margin-bottom:20px;}
 
@@ -146,6 +139,7 @@ input{
 padding:6px;
 margin-right:5px;
 }
+
 </style>
 
 </head>
@@ -199,8 +193,6 @@ document.getElementById("products").classList.remove("active");
 document.getElementById(id).classList.add("active");
 }
 
-/* 🔥 SEARCH FIX FULL */
-
 async function loadProducts(){
 
 const q=document.getElementById("searchInput").value || "";
@@ -209,10 +201,6 @@ const res=await fetch('/api/products?q='+encodeURIComponent(q));
 const data=await res.json();
 
 let html="";
-
-if(data.products.length===0){
-html="<p>No products found</p>";
-}else{
 
 data.products.forEach(p=>{
 html+=\`
@@ -223,13 +211,9 @@ html+=\`
 </div>\`;
 });
 
-}
-
 document.getElementById("productContainer").innerHTML=html;
 
 }
-
-/* VARIANTS */
 
 async function loadVariants(id){
 
@@ -245,8 +229,8 @@ html+=\`
 
 Weight <input id="weight-\${v.id}">
 Diamond <input id="diamond-\${v.id}">
-Making <input id="making-\${v.id}">
-GST <input id="gst-\${v.id}">
+Making % <input id="making-\${v.id}">
+GST % <input id="gst-\${v.id}">
 
 <button onclick="saveVariant(\${v.id},'\${v.title}')">Save</button>
 
@@ -256,8 +240,6 @@ GST <input id="gst-\${v.id}">
 document.getElementById("variants-"+id).innerHTML=html;
 
 }
-
-/* SAVE */
 
 async function saveVariant(id,title){
 
@@ -275,8 +257,6 @@ body:JSON.stringify({id,weight,diamond,making,gst,title})
 alert("Saved");
 
 }
-
-/* UPDATE */
 
 async function updateGold(){
 
@@ -313,7 +293,6 @@ loadProducts();
 app.get("/api/products",async(req,res)=>{
 
 const q=(req.query.q||"").toLowerCase();
-
 const products=await getAllProducts();
 
 const filtered = q
@@ -324,7 +303,7 @@ res.json({products:filtered});
 
 });
 
-/* बाकी API same रखो */
+/* VARIANTS */
 
 app.get("/api/variants/:id",async(req,res)=>{
 const r=await shopifyFetch(
@@ -336,85 +315,81 @@ const data=await r.json();
 res.json(data.product.variants);
 });
 
+/* SAVE */
+
 app.post("/api/save-variant",(req,res)=>{
 const {id,weight,diamond,making,gst,title}=req.body;
+
 const kt=title.toUpperCase().includes("12KT")?"12KT":"14KT";
+
 VARIANT_CONFIG[id]={weight,diamond,making,gst,kt,title};
+
 saveConfig();
-console.log("✅ SAVED:",id,kt);
+
+console.log("✅ SAVED:",id,kt,title);
+
 res.json({success:true});
 });
 
-app.post("/api/set-gold", async (req, res) => {
+/* UPDATE (FIXED LOGIC) */
 
-const rate12 = parseFloat(req.body.rate12) || 0;
-const rate14 = parseFloat(req.body.rate14) || 0;
+app.post("/api/set-gold",async(req,res)=>{
 
-let updated = 0;
+const rate12=parseFloat(req.body.rate12)||0;
+const rate14=parseFloat(req.body.rate14)||0;
 
-console.log("🚀 PRICE UPDATE STARTED");
-console.log("12KT:", rate12, "| 14KT:", rate14);
+let updated=0;
 
-for (const id in VARIANT_CONFIG) {
+console.log("🚀 START UPDATE");
 
-  const v = VARIANT_CONFIG[id];
+for(const id in VARIANT_CONFIG){
 
-  try {
+const v=VARIANT_CONFIG[id];
 
-    const rate = v.kt === "12KT" ? rate12 : rate14;
+try{
 
-    const weight = parseFloat(v.weight || 0);
-    const diamond = parseFloat(v.diamond || 0);
-    const making = parseFloat(v.making || 0);
-    const gst = parseFloat(v.gst || 0);
+const rate=v.kt==="12KT"?rate12:rate14;
 
-    const gold = rate * weight;
-    const subtotal = gold + diamond + making;
-    const final = subtotal + (subtotal * (gst / 100));
+const gold=rate*(v.weight||0);
 
-    const price = final.toFixed(2);
+/* 🔥 MAKING % FIX */
+const making = gold * ((+v.making||0)/100);
 
-    const r = await shopifyFetch(
-      `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
-      {
-        method: "PUT",
-        headers: {
-          "X-Shopify-Access-Token": TOKEN,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          variant: { id, price }
-        })
-      }
-    );
+const subtotal=gold+(+v.diamond||0)+making;
+const final=subtotal+(subtotal*((+v.gst||0)/100));
 
-    if (!r) {
-      console.log("❌ FAILED:", id);
-      continue;
-    }
+const price=final.toFixed(2);
 
-    updated++;
+const r=await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
+{
+method:"PUT",
+headers:{
+"X-Shopify-Access-Token":TOKEN,
+"Content-Type":"application/json"
+},
+body:JSON.stringify({variant:{id,price}})
+}
+);
 
-    /* 🔥 CLEAR LOG */
-    console.log("✅ UPDATED VARIANT:");
-    console.log("ID:", id);
-    console.log("TITLE:", v.title);
-    console.log("KT:", v.kt);
-    console.log("NEW PRICE:", price);
-    console.log("-----------------------------");
+if(!r) continue;
 
-    /* ⏱ 2 SECOND DELAY */
-    await new Promise(r => setTimeout(r, 2000));
+updated++;
 
-  } catch (err) {
-    console.log("❌ ERROR:", id);
-  }
+console.log("✅ UPDATED:",id,v.kt,price);
+
+/* 2 sec delay */
+await new Promise(r=>setTimeout(r,2000));
+
+}catch(e){
+console.log("❌ ERROR:",id);
+}
 
 }
 
-console.log("🎉 TOTAL UPDATED:", updated);
+console.log("🎉 DONE:",updated);
 
-res.json({ updated });
+res.json({updated});
 
 });
 
