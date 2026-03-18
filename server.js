@@ -376,7 +376,7 @@ body:JSON.stringify({variant:{id,price}})
 );
 
 updated++;
-await new Promise(r=>setTimeout(r,500));
+await new Promise(r=>setTimeout(r,2500));
 
 }
 
