@@ -82,11 +82,9 @@ res.send(`
 
 <html>
 <head>
-
 <title>ANAZIA GOLD PANEL</title>
 
 <style>
-
 body{font-family:Arial;background:#f3f5f7;padding:30px;}
 h1{margin-bottom:20px;}
 
@@ -98,7 +96,6 @@ margin-right:10px;
 cursor:pointer;
 border-radius:6px;
 }
-
 .tabs button:hover{background:black;color:white;}
 
 .section{display:none;}
@@ -139,7 +136,6 @@ input{
 padding:6px;
 margin-right:5px;
 }
-
 </style>
 
 </head>
@@ -154,38 +150,25 @@ margin-right:5px;
 </div>
 
 <div id="pricing" class="section active">
-
 <div class="card">
-
-Gold 12KT ₹/gram
-<input id="rate12">
-
-Gold 14KT ₹/gram
-<input id="rate14">
-
+Gold 12KT ₹/gram <input id="rate12">
+Gold 14KT ₹/gram <input id="rate14">
 <button onclick="updateGold()">Update Whole Website</button>
-
 <p id="status"></p>
-
 </div>
-
 </div>
 
 <div id="products" class="section">
-
 <div class="card">
-
 <input id="searchInput" placeholder="Search product">
-
-<button onclick="loadProducts()">Search</button>
-
+<button onclick="loadProducts(1)">Search</button>
 </div>
-
 <div id="productContainer"></div>
-
 </div>
 
 <script>
+
+let currentPage = 1;
 
 function showTab(id){
 document.getElementById("pricing").classList.remove("active");
@@ -193,11 +176,15 @@ document.getElementById("products").classList.remove("active");
 document.getElementById(id).classList.add("active");
 }
 
-async function loadProducts(){
+/* PRODUCTS */
+
+async function loadProducts(page=1){
+
+currentPage = page;
 
 const q=document.getElementById("searchInput").value || "";
 
-const res=await fetch('/api/products?q='+encodeURIComponent(q));
+const res=await fetch('/api/products?q='+encodeURIComponent(q)+'&page='+page);
 const data=await res.json();
 
 let html="";
@@ -211,9 +198,24 @@ html+=\`
 </div>\`;
 });
 
+/* PAGINATION */
+html+=\`<div style="margin-top:20px;">\`;
+
+if(page>1){
+html+=\`<button onclick="loadProducts(\${page-1})">⬅ Prev</button>\`;
+}
+
+if((page*20)<data.total){
+html+=\`<button onclick="loadProducts(\${page+1})">Next ➡</button>\`;
+}
+
+html+=\`</div>\`;
+
 document.getElementById("productContainer").innerHTML=html;
 
 }
+
+/* VARIANTS */
 
 async function loadVariants(id){
 
@@ -241,6 +243,8 @@ document.getElementById("variants-"+id).innerHTML=html;
 
 }
 
+/* SAVE */
+
 async function saveVariant(id,title){
 
 const weight=document.getElementById("weight-"+id).value;
@@ -257,6 +261,8 @@ body:JSON.stringify({id,weight,diamond,making,gst,title})
 alert("Saved");
 
 }
+
+/* UPDATE */
 
 async function updateGold(){
 
@@ -283,9 +289,7 @@ loadProducts();
 
 </body>
 </html>
-
 `);
-
 });
 
 /* ================= API ================= */
@@ -293,13 +297,24 @@ loadProducts();
 app.get("/api/products",async(req,res)=>{
 
 const q=(req.query.q||"").toLowerCase();
+const page=parseInt(req.query.page)||1;
+const limit=20;
+
 const products=await getAllProducts();
 
-const filtered = q
-  ? products.filter(p => p.title.toLowerCase().includes(q))
-  : products;
+const filtered=q
+? products.filter(p=>p.title.toLowerCase().includes(q))
+: products;
 
-res.json({products:filtered});
+const start=(page-1)*limit;
+const end=start+limit;
+
+console.log("📦 Products:",start,"-",end);
+
+res.json({
+products:filtered.slice(start,end),
+total:filtered.length
+});
 
 });
 
@@ -312,6 +327,7 @@ const r=await shopifyFetch(
 );
 if(!r) return res.json([]);
 const data=await r.json();
+console.log("👉 Variants:",data.product.variants.length);
 res.json(data.product.variants);
 });
 
@@ -331,7 +347,7 @@ console.log("✅ SAVED:",id,kt,title);
 res.json({success:true});
 });
 
-/* UPDATE (FIXED LOGIC) */
+/* UPDATE */
 
 app.post("/api/set-gold",async(req,res)=>{
 
@@ -352,7 +368,7 @@ const rate=v.kt==="12KT"?rate12:rate14;
 
 const gold=rate*(v.weight||0);
 
-/* 🔥 MAKING % FIX */
+/* MAKING % */
 const making = gold * ((+v.making||0)/100);
 
 const subtotal=gold+(+v.diamond||0)+making;
