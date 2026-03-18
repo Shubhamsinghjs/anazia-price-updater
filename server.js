@@ -504,4 +504,4 @@ app.listen(PORT,()=>{
 
 console.log("ANAZIA SERVER RUNNING");
 
-});
+}); 
