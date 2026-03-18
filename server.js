@@ -345,42 +345,77 @@ console.log("✅ SAVED:",id,kt);
 res.json({success:true});
 });
 
-app.post("/api/set-gold",async(req,res)=>{
-const rate12=parseFloat(req.body.rate12)||0;
-const rate14=parseFloat(req.body.rate14)||0;
+app.post("/api/set-gold", async (req, res) => {
 
-let updated=0;
+const rate12 = parseFloat(req.body.rate12) || 0;
+const rate14 = parseFloat(req.body.rate14) || 0;
 
-for(const id in VARIANT_CONFIG){
+let updated = 0;
 
-const v=VARIANT_CONFIG[id];
+console.log("🚀 PRICE UPDATE STARTED");
+console.log("12KT:", rate12, "| 14KT:", rate14);
 
-const rate=v.kt==="12KT"?rate12:rate14;
+for (const id in VARIANT_CONFIG) {
 
-const gold=rate*(v.weight||0);
-const subtotal=gold+(+v.diamond||0)+(+v.making||0);
-const final=subtotal+(subtotal*((+v.gst||0)/100));
+  const v = VARIANT_CONFIG[id];
 
-const price=final.toFixed(2);
+  try {
 
-await shopifyFetch(
-`https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
-{
-method:"PUT",
-headers:{
-"X-Shopify-Access-Token":TOKEN,
-"Content-Type":"application/json"
-},
-body:JSON.stringify({variant:{id,price}})
+    const rate = v.kt === "12KT" ? rate12 : rate14;
+
+    const weight = parseFloat(v.weight || 0);
+    const diamond = parseFloat(v.diamond || 0);
+    const making = parseFloat(v.making || 0);
+    const gst = parseFloat(v.gst || 0);
+
+    const gold = rate * weight;
+    const subtotal = gold + diamond + making;
+    const final = subtotal + (subtotal * (gst / 100));
+
+    const price = final.toFixed(2);
+
+    const r = await shopifyFetch(
+      `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
+      {
+        method: "PUT",
+        headers: {
+          "X-Shopify-Access-Token": TOKEN,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          variant: { id, price }
+        })
+      }
+    );
+
+    if (!r) {
+      console.log("❌ FAILED:", id);
+      continue;
+    }
+
+    updated++;
+
+    /* 🔥 CLEAR LOG */
+    console.log("✅ UPDATED VARIANT:");
+    console.log("ID:", id);
+    console.log("TITLE:", v.title);
+    console.log("KT:", v.kt);
+    console.log("NEW PRICE:", price);
+    console.log("-----------------------------");
+
+    /* ⏱ 2 SECOND DELAY */
+    await new Promise(r => setTimeout(r, 2000));
+
+  } catch (err) {
+    console.log("❌ ERROR:", id);
+  }
+
 }
-);
 
-updated++;
-await new Promise(r=>setTimeout(r,1500));
+console.log("🎉 TOTAL UPDATED:", updated);
 
-}
+res.json({ updated });
 
-res.json({updated});
 });
 
 /* SERVER */
