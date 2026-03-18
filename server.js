@@ -24,13 +24,12 @@ function saveConfig(){
 /* ================= SHOPIFY ================= */
 
 async function shopifyFetch(url,options={}){
-
   const res = await fetch(url,options);
 
   if(!res.ok){
     const txt = await res.text();
     console.log("❌ Shopify Error:",txt);
-    return null; // skip
+    return null;
   }
 
   return res;
@@ -75,7 +74,15 @@ async function getAllProducts(){
   return products;
 }
 
-/* ================= UI (SAME DESIGN) ================= */
+/* 🔥 CLEAR CACHE */
+
+app.get("/api/clear-cache",(req,res)=>{
+  PRODUCT_CACHE=[];
+  console.log("🧹 Cache Cleared");
+  res.send("Cache cleared");
+});
+
+/* ================= UI SAME ================= */
 
 app.get("/",(req,res)=>{
 
@@ -87,7 +94,6 @@ res.send(`
 <title>ANAZIA GOLD PANEL</title>
 
 <style>
-
 body{font-family:Arial;background:#f3f5f7;padding:30px;}
 h1{margin-bottom:20px;}
 
@@ -140,7 +146,6 @@ input{
 padding:6px;
 margin-right:5px;
 }
-
 </style>
 
 </head>
@@ -194,7 +199,7 @@ document.getElementById("products").classList.remove("active");
 document.getElementById(id).classList.add("active");
 }
 
-/* SEARCH FIX */
+/* 🔥 SEARCH FIX FULL */
 
 async function loadProducts(){
 
@@ -205,6 +210,10 @@ const data=await res.json();
 
 let html="";
 
+if(data.products.length===0){
+html="<p>No products found</p>";
+}else{
+
 data.products.forEach(p=>{
 html+=\`
 <div class="product">
@@ -213,6 +222,8 @@ html+=\`
 <div id="variants-\${p.id}"></div>
 </div>\`;
 });
+
+}
 
 document.getElementById("productContainer").innerHTML=html;
 
@@ -228,7 +239,6 @@ const variants=await res.json();
 let html="";
 
 variants.forEach(v=>{
-
 html+=\`
 <div class="variant">
 <b>\${v.title}</b><br>
@@ -238,12 +248,9 @@ Diamond <input id="diamond-\${v.id}">
 Making <input id="making-\${v.id}">
 GST <input id="gst-\${v.id}">
 
-<button onclick="saveVariant(\${v.id},'\${v.title}')">
-Save
-</button>
+<button onclick="saveVariant(\${v.id},'\${v.title}')">Save</button>
 
 </div>\`;
-
 });
 
 document.getElementById("variants-"+id).innerHTML=html;
@@ -309,55 +316,36 @@ const q=(req.query.q||"").toLowerCase();
 
 const products=await getAllProducts();
 
-const filtered=products.filter(p=>
-p.title.toLowerCase().includes(q)
-);
+const filtered = q
+  ? products.filter(p => p.title.toLowerCase().includes(q))
+  : products;
 
-res.json({products:filtered.slice(0,50)});
+res.json({products:filtered});
 
 });
+
+/* बाकी API same रखो */
 
 app.get("/api/variants/:id",async(req,res)=>{
-
 const r=await shopifyFetch(
 `https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
-{
-headers:{"X-Shopify-Access-Token":TOKEN}
-}
+{headers:{"X-Shopify-Access-Token":TOKEN}}
 );
-
 if(!r) return res.json([]);
-
 const data=await r.json();
-
-console.log("👉 Variants:",data.product.variants.length);
-
 res.json(data.product.variants);
-
 });
-
-/* SAVE */
 
 app.post("/api/save-variant",(req,res)=>{
-
 const {id,weight,diamond,making,gst,title}=req.body;
-
 const kt=title.toUpperCase().includes("12KT")?"12KT":"14KT";
-
 VARIANT_CONFIG[id]={weight,diamond,making,gst,kt,title};
-
 saveConfig();
-
 console.log("✅ SAVED:",id,kt);
-
 res.json({success:true});
-
 });
 
-/* UPDATE */
-
 app.post("/api/set-gold",async(req,res)=>{
-
 const rate12=parseFloat(req.body.rate12)||0;
 const rate14=parseFloat(req.body.rate14)||0;
 
@@ -367,8 +355,6 @@ for(const id in VARIANT_CONFIG){
 
 const v=VARIANT_CONFIG[id];
 
-try{
-
 const rate=v.kt==="12KT"?rate12:rate14;
 
 const gold=rate*(v.weight||0);
@@ -377,7 +363,7 @@ const final=subtotal+(subtotal*((+v.gst||0)/100));
 
 const price=final.toFixed(2);
 
-const r=await shopifyFetch(
+await shopifyFetch(
 `https://${SHOP}/admin/api/2023-10/variants/${id}.json`,
 {
 method:"PUT",
@@ -389,24 +375,12 @@ body:JSON.stringify({variant:{id,price}})
 }
 );
 
-if(!r) continue;
-
 updated++;
-
-console.log("🔥 UPDATED:",id,price);
-
 await new Promise(r=>setTimeout(r,500));
 
-}catch(e){
-console.log("❌ Skip:",id);
 }
-
-}
-
-console.log("✅ TOTAL UPDATED:",updated);
 
 res.json({updated});
-
 });
 
 /* SERVER */
