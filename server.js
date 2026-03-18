@@ -86,37 +86,110 @@ app.get("/", (req, res) => {
 <html>
 <head>
 <title>ANAZIA GOLD PANEL</title>
+
 <style>
-body{font-family:Arial;background:#f3f5f7;padding:30px;}
-.card{background:white;padding:20px;border-radius:10px;margin-bottom:20px;}
-.product{background:white;padding:15px;margin-bottom:10px;border-radius:8px;}
-.variant{background:#fafafa;padding:10px;margin-top:10px;border-radius:6px;}
-button{padding:6px 12px;background:black;color:white;border:none;border-radius:6px;}
-input{padding:6px;margin:5px;}
+body{
+  font-family:Arial;
+  background:#f3f5f7;
+  padding:30px;
+}
+
+h1{
+  margin-bottom:20px;
+}
+
+.card{
+  background:white;
+  padding:20px;
+  border-radius:10px;
+  margin-bottom:20px;
+  box-shadow:0 3px 8px rgba(0,0,0,0.08);
+}
+
+.product{
+  background:white;
+  padding:15px;
+  margin-bottom:10px;
+  border-radius:8px;
+}
+
+.variant{
+  background:#fafafa;
+  padding:12px;
+  margin-top:10px;
+  border-radius:6px;
+}
+
+button{
+  padding:6px 12px;
+  background:black;
+  color:white;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+input{
+  padding:6px;
+  margin:5px;
+  width:120px;
+}
+
+.kt-badge{
+  padding:3px 8px;
+  border-radius:5px;
+  font-size:12px;
+  margin-left:10px;
+}
+
+.kt12{background:#e3f2fd;color:#1565c0;}
+.kt14{background:#fce4ec;color:#c2185b;}
+
+.saved{
+  color:green;
+  font-size:12px;
+}
 </style>
+
 </head>
+
 <body>
 
 <h1>ANAZIA GOLD PRICING PANEL</h1>
 
+<!-- 🔥 GOLD RATE PANEL -->
 <div class="card">
-Gold 12KT ₹/gram <input id="rate12"><br>
-Gold 14KT ₹/gram <input id="rate14"><br><br>
+
+<b>Gold 12KT ₹/gram</b><br>
+<input id="rate12"><br><br>
+
+<b>Gold 14KT ₹/gram</b><br>
+<input id="rate14"><br><br>
 
 <button onclick="updateGold()">Update Whole Website</button>
+
 <p id="status"></p>
+
 </div>
 
+<!-- 🔥 SEARCH -->
 <div class="card">
+
 <input id="searchInput" placeholder="Search product">
 <button onclick="loadProducts()">Search</button>
+
 </div>
 
 <div id="productContainer"></div>
 
 <script>
 
+/* =========================
+UPDATE GOLD
+========================= */
+
 async function updateGold(){
+
 const rate12=document.getElementById("rate12").value;
 const rate14=document.getElementById("rate14").value;
 
@@ -129,10 +202,17 @@ body:JSON.stringify({rate12,rate14})
 });
 
 const data=await res.json();
-document.getElementById("status").innerText="Updated "+data.updated;
+
+document.getElementById("status").innerText="✅ Updated "+data.updated+" variants";
+
 }
 
+/* =========================
+LOAD PRODUCTS
+========================= */
+
 async function loadProducts(){
+
 const q=document.getElementById("searchInput").value;
 
 const res=await fetch('/api/products?q='+q);
@@ -143,37 +223,80 @@ let html="";
 data.products.forEach(p=>{
 html+=\`
 <div class="product">
+
 <b>\${p.title}</b>
+
 <button onclick="loadVariants(\${p.id})">Configure</button>
+
 <div id="v-\${p.id}"></div>
+
 </div>\`;
 });
 
 document.getElementById("productContainer").innerHTML=html;
+
 }
 
+/* =========================
+LOAD VARIANTS
+========================= */
+
 async function loadVariants(id){
+
 const res=await fetch('/api/variants/'+id);
 const variants=await res.json();
 
 let html="";
 
 variants.forEach(v=>{
+
+let kt="14KT";
+let badge="kt14";
+
+if(v.title.toUpperCase().includes("12KT")){
+  kt="12KT";
+  badge="kt12";
+}
+
 html+=\`
 <div class="variant">
-<b>\${v.title}</b><br>
+
+<b>\${v.title}</b>
+<span class="kt-badge \${badge}">\${kt}</span>
+
+<br><br>
+
 Weight <input id="w-\${v.id}">
 Diamond <input id="d-\${v.id}">
 Making <input id="m-\${v.id}">
 GST <input id="g-\${v.id}">
-<button onclick="saveVariant(\${v.id},'\${v.title}')">Save</button>
+
+<br><br>
+
+<button onclick="saveVariant(\${v.id},'\${v.title}')">
+Save
+</button>
+
+<span id="status-\${v.id}" class="saved"></span>
+
+<br><br>
+
+<small>Variant ID: \${v.id}</small>
+
 </div>\`;
+
 });
 
 document.getElementById("v-"+id).innerHTML=html;
+
 }
 
+/* =========================
+SAVE VARIANT
+========================= */
+
 async function saveVariant(id,title){
+
 const weight=document.getElementById("w-"+id).value;
 const diamond=document.getElementById("d-"+id).value;
 const making=document.getElementById("m-"+id).value;
@@ -185,8 +308,11 @@ headers:{"Content-Type":"application/json"},
 body:JSON.stringify({id,weight,diamond,making,gst,title})
 });
 
-alert("Saved");
+document.getElementById("status-"+id).innerText="✅ Saved";
+
 }
+
+/* ========================= */
 
 loadProducts();
 
