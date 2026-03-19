@@ -360,7 +360,7 @@ let updated=0;
 
 for(const id in VARIANT_CONFIG){
 
-const v=VARIANT_CONFIG[id;
+const v=VARIANT_CONFIG[id];
 
 const rate=v.kt==="12KT"?GOLD_RATE.rate12:GOLD_RATE.rate14;
 
