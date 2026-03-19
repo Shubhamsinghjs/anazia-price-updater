@@ -38,7 +38,8 @@ async function shopifyFetch(url, options = {}) {
     const res = await fetch(url, options);
 
     if (!res.ok) {
-      console.log("❌ Shopify Error");
+      const txt = await res.text();
+      console.log("❌ Shopify Error:", txt);;
       return null;
     }
 
@@ -299,23 +300,37 @@ loadProducts();
 
 app.get("/api/products", async (req, res) => {
 
-const q=(req.query.q||"").toLowerCase();
-const page=parseInt(req.query.page)||1;
-const limit=30; // 🔥 30 products
+const q = (req.query.q || "").toLowerCase();
+const page = parseInt(req.query.page) || 1;
+const limit = 50; // 🔥 50 products
 
-const products=await getAllProducts();
+try {
 
-const filtered=q
-? products.filter(p=>p.title.toLowerCase().includes(q))
+const products = await getAllProducts();
+
+if (!products || products.length === 0) {
+  console.log("❌ No products found - check API");
+  return res.json({ products: [], total: 0 });
+}
+
+const filtered = q
+? products.filter(p => p.title.toLowerCase().includes(q))
 : products;
 
-const start=(page-1)*limit;
-const end=start+limit;
+const start = (page - 1) * limit;
+const end = start + limit;
+
+console.log(`📦 Showing ${start} - ${end}`);
 
 res.json({
-products:filtered.slice(start,end),
-total:filtered.length
+products: filtered.slice(start, end),
+total: filtered.length
 });
+
+} catch (err) {
+console.log("❌ Product API Error:", err);
+res.json({ products: [], total: 0 });
+}
 
 });
 
