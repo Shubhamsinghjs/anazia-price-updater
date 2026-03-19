@@ -4,6 +4,12 @@ const express = require("express");
 const fetch = require("node-fetch");
 const fs = require("fs");
 
+const cors = require("cors");
+
+app.use(cors({
+  origin: "*"
+}));
+
 const app = express();
 app.use(express.json());
 
