@@ -409,18 +409,39 @@ res.json({updated});
 
 });
 
-app.get("/variant-price/:id", (req, res) => {
+// variant api fatch code start here 
+
+app.get("/variant-data/:id", (req, res) => {
   const variantId = req.params.id;
 
-  const variant = VARIANT_CONFIG.find(
-    (v) => String(v.variant_id) === String(variantId)
-  );
-
-  if (!variant) {
-    return res.json({ price: null });
+  if (!VARIANT_CONFIG || typeof VARIANT_CONFIG !== "object") {
+    return res.json({ error: "Invalid data format" });
   }
 
-  res.json({ price: variant.price });
+  const data = VARIANT_CONFIG[variantId];
+
+  if (!data) {
+    return res.json({ error: "Variant not found" });
+  }
+
+  // 🔥 Calculation
+  const goldRate = data.kt === "14KT" ? 9400 : 8600;
+
+  const goldPrice = Number(data.weight) * goldRate;
+  const diamondPrice = Number(data.diamond);
+  const makingCharge = (goldPrice * Number(data.making)) / 100;
+  const subtotal = goldPrice + diamondPrice + makingCharge;
+  const gstAmount = (subtotal * Number(data.gst)) / 100;
+  const total = subtotal + gstAmount;
+
+  res.json({
+    kt: data.kt,
+    goldPrice: Math.round(goldPrice),
+    diamondPrice,
+    makingCharge: Math.round(makingCharge),
+    gstAmount: Math.round(gstAmount),
+    total: Math.round(total),
+  });
 });
 
 /* SERVER */
