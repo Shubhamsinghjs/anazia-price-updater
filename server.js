@@ -409,6 +409,20 @@ res.json({updated});
 
 });
 
+app.get("/variant-price/:id", (req, res) => {
+  const variantId = req.params.id;
+
+  const variant = VARIANT_CONFIG.find(
+    (v) => String(v.variant_id) === String(variantId)
+  );
+
+  if (!variant) {
+    return res.json({ price: null });
+  }
+
+  res.json({ price: variant.price });
+});
+
 /* SERVER */
 
 app.listen(PORT,()=>{
