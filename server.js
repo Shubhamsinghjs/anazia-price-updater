@@ -1,7 +1,7 @@
 require("dotenv").config({ path: ".env" });
 
 const express = require("express");
-const fetch = require("node-fetch"); // use v2
+const fetch = require("node-fetch"); // v2
 const fs = require("fs");
 const cors = require("cors");
 
@@ -16,12 +16,13 @@ const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = "./variant-data.json";
 
-// 🔥 GLOBAL GOLD RATE (SYNC FIX)
+/* GOLD RATE */
 let GOLD_RATE = {
   rate12: 8600,
   rate14: 9400
 };
 
+/* LOAD CONFIG */
 let VARIANT_CONFIG = {};
 if (fs.existsSync(DATA_FILE)) {
   VARIANT_CONFIG = JSON.parse(fs.readFileSync(DATA_FILE));
@@ -31,15 +32,14 @@ function saveConfig() {
   fs.writeFileSync(DATA_FILE, JSON.stringify(VARIANT_CONFIG, null, 2));
 }
 
-/* ================= SHOPIFY ================= */
-
+/* SHOPIFY FETCH */
 async function shopifyFetch(url, options = {}) {
   try {
     const res = await fetch(url, options);
 
     if (!res.ok) {
       const txt = await res.text();
-      console.log("❌ Shopify Error:", txt);;
+      console.log("❌ Shopify Error:", txt);
       return null;
     }
 
@@ -50,8 +50,7 @@ async function shopifyFetch(url, options = {}) {
   }
 }
 
-/* ================= PRODUCTS ================= */
-
+/* PRODUCTS CACHE */
 let PRODUCT_CACHE = [];
 
 async function getAllProducts() {
@@ -81,7 +80,6 @@ async function getAllProducts() {
   }
 
   PRODUCT_CACHE = products;
-
   console.log("✅ Products Loaded:", products.length);
 
   return products;
@@ -92,6 +90,7 @@ async function getAllProducts() {
 app.get("/", (req, res) => {
 
 res.send(`
+
 <html>
 <head>
 <title>ANAZIA GOLD PANEL</title>
@@ -208,14 +207,14 @@ html+=\`
 </div>\`;
 });
 
-// 🔥 PAGINATION
+// PAGINATION
 html+=\`<div style="margin-top:20px;">\`;
 
 if(page>1){
 html+=\`<button onclick="loadProducts(\${page-1})">⬅ Prev</button>\`;
 }
 
-if((page*30)<data.total){
+if((page*50)<data.total){
 html+=\`<button onclick="loadProducts(\${page+1})">Next ➡</button>\`;
 }
 
@@ -225,7 +224,10 @@ document.getElementById("productContainer").innerHTML=html;
 
 }
 
+/* 🔥 FIXED */
 async function loadVariants(id){
+
+console.log("CLICK:",id);
 
 const res=await fetch('/api/variants/'+id);
 const variants=await res.json();
@@ -293,25 +295,20 @@ loadProducts();
 
 </body>
 </html>
+
 `);
 });
 
 /* ================= API ================= */
 
+/* 🔥 PRODUCTS */
 app.get("/api/products", async (req, res) => {
 
 const q = (req.query.q || "").toLowerCase();
 const page = parseInt(req.query.page) || 1;
-const limit = 50; // 🔥 50 products
-
-try {
+const limit = 50;
 
 const products = await getAllProducts();
-
-if (!products || products.length === 0) {
-  console.log("❌ No products found - check API");
-  return res.json({ products: [], total: 0 });
-}
 
 const filtered = q
 ? products.filter(p => p.title.toLowerCase().includes(q))
@@ -320,22 +317,49 @@ const filtered = q
 const start = (page - 1) * limit;
 const end = start + limit;
 
-console.log(`📦 Showing ${start} - ${end}`);
-
 res.json({
 products: filtered.slice(start, end),
 total: filtered.length
 });
 
-} catch (err) {
-console.log("❌ Product API Error:", err);
-res.json({ products: [], total: 0 });
+});
+
+/* 🔥 MISSING API FIX */
+app.get("/api/variants/:id", async (req, res) => {
+
+const r = await shopifyFetch(
+`https://${SHOP}/admin/api/2023-10/products/${req.params.id}.json`,
+{
+headers: {
+"X-Shopify-Access-Token": TOKEN
 }
+}
+);
+
+if (!r) return res.json([]);
+
+const data = await r.json();
+
+res.json(data.product.variants);
 
 });
 
-/* VARIANT DATA API */
+/* SAVE */
+app.post("/api/save-variant", (req, res) => {
 
+const { id, weight, diamond, making, gst, title } = req.body;
+
+const kt = title.toUpperCase().includes("12KT") ? "12KT" : "14KT";
+
+VARIANT_CONFIG[id] = { weight, diamond, making, gst, kt };
+
+saveConfig();
+
+res.json({ success: true });
+
+});
+
+/* VARIANT DATA */
 app.get("/variant-data/:id", (req, res) => {
 
 const data = VARIANT_CONFIG[req.params.id];
@@ -365,7 +389,6 @@ total: Math.round(total)
 });
 
 /* UPDATE GOLD */
-
 app.post("/api/set-gold", async (req, res) => {
 
 GOLD_RATE.rate12 = parseFloat(req.body.rate12)||0;
@@ -407,5 +430,4 @@ res.json({updated});
 });
 
 /* SERVER */
-
 app.listen(PORT,()=>console.log("🚀 SERVER RUNNING"));
