@@ -359,6 +359,43 @@ res.json({ success: true });
 
 });
 
+
+/* 🔥 VARIANT DATA API (MISSING FIX) */
+app.get("/variant-data/:id", (req, res) => {
+
+console.log("👉 VARIANT API HIT:", req.params.id);
+
+const data = VARIANT_CONFIG[req.params.id];
+
+if (!data) {
+  console.log("❌ NOT FOUND:", req.params.id);
+  return res.json({ error: "Not found" });
+}
+
+const goldRate = data.kt === "14KT"
+? GOLD_RATE.rate14
+: GOLD_RATE.rate12;
+
+const goldPrice = Number(data.weight) * goldRate;
+const diamondPrice = Number(data.diamond);
+const making = (goldPrice * Number(data.making)) / 100;
+const subtotal = goldPrice + diamondPrice + making;
+const gst = (subtotal * Number(data.gst)) / 100;
+const total = subtotal + gst;
+
+console.log("✅ SENDING DATA:", req.params.id);
+
+res.json({
+kt: data.kt,
+goldPrice: Math.round(goldPrice),
+diamondPrice,
+makingCharge: Math.round(making),
+gstAmount: Math.round(gst),
+total: Math.round(total)
+});
+
+});
+
 /* UPDATE GOLD */
 app.post("/api/set-gold", async (req, res) => {
 
