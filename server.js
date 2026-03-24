@@ -18,7 +18,7 @@ const DATA_FILE = "./variant-data.json";
 
 /* GOLD RATE */
 let GOLD_RATE = {
-  rate12: 8600,
+  rate9: 8600,
   rate14: 9400
 };
 
@@ -85,7 +85,7 @@ async function getAllProducts() {
   return products;
 }
 
-/* ================= UI ================= */
+/* UI */
 
 app.get("/", (req, res) => {
 
@@ -161,7 +161,7 @@ margin-right:5px;
 
 <div id="pricing" class="section active">
 <div class="card">
-Gold 12KT ₹/gram <input id="rate12">
+Gold 9KT ₹/gram <input id="rate12">
 Gold 14KT ₹/gram <input id="rate14">
 <button onclick="updateGold()">Update Whole Website</button>
 <p id="status"></p>
@@ -236,7 +236,7 @@ html+=\`
 
 Weight <input id="weight-\${v.id}">
 Diamond <input id="diamond-\${v.id}">
-Making % <input id="making-\${v.id}">
+Making ₹ <input id="making-\${v.id}">
 GST % <input id="gst-\${v.id}">
 
 <button onclick="saveVariant(\${v.id},'\${v.title}')">Save</button>
@@ -293,8 +293,6 @@ loadProducts();
 `);
 });
 
-/* ================= API ================= */
-
 /* PRODUCTS */
 app.get("/api/products", async (req, res) => {
 
@@ -310,8 +308,6 @@ const filtered = q
 
 const start = (page - 1) * limit;
 const end = start + limit;
-
-console.log(`📦 Showing ${start} - ${end}`);
 
 res.json({
 products: filtered.slice(start, end),
@@ -336,18 +332,16 @@ if (!r) return res.json([]);
 
 const data = await r.json();
 
-console.log("👉 Variants Loaded:", req.params.id);
-
 res.json(data.product.variants);
 
 });
 
-/* SAVE VARIANT */
+/* SAVE */
 app.post("/api/save-variant", (req, res) => {
 
 const { id, weight, diamond, making, gst, title } = req.body;
 
-const kt = title.toUpperCase().includes("12KT") ? "12KT" : "14KT";
+const kt = title.toUpperCase().includes("9KT") ? "9KT" : "14KT";
 
 VARIANT_CONFIG[id] = { weight, diamond, making, gst, kt };
 
@@ -359,31 +353,24 @@ res.json({ success: true });
 
 });
 
-
-/* 🔥 VARIANT DATA API (MISSING FIX) */
+/* VARIANT DATA */
 app.get("/variant-data/:id", (req, res) => {
-
-console.log("👉 VARIANT API HIT:", req.params.id);
 
 const data = VARIANT_CONFIG[req.params.id];
 
-if (!data) {
-  console.log("❌ NOT FOUND:", req.params.id);
-  return res.json({ error: "Not found" });
-}
+if (!data) return res.json({ error: "Not found" });
 
 const goldRate = data.kt === "14KT"
 ? GOLD_RATE.rate14
-: GOLD_RATE.rate12;
+: GOLD_RATE.rate9;
 
 const goldPrice = Number(data.weight) * goldRate;
 const diamondPrice = Number(data.diamond);
-const making = (goldPrice * Number(data.making)) / 100;
+const making = Number(data.making);
+
 const subtotal = goldPrice + diamondPrice + making;
 const gst = (subtotal * Number(data.gst)) / 100;
 const total = subtotal + gst;
-
-console.log("✅ SENDING DATA:", req.params.id);
 
 res.json({
 kt: data.kt,
@@ -396,10 +383,10 @@ total: Math.round(total)
 
 });
 
-/* UPDATE GOLD */
+/* UPDATE */
 app.post("/api/set-gold", async (req, res) => {
 
-GOLD_RATE.rate12 = parseFloat(req.body.rate12)||0;
+GOLD_RATE.rate9 = parseFloat(req.body.rate12)||0;
 GOLD_RATE.rate14 = parseFloat(req.body.rate14)||0;
 
 let updated = 0;
@@ -410,10 +397,11 @@ for(const id in VARIANT_CONFIG){
 
 const v = VARIANT_CONFIG[id];
 
-const rate=v.kt==="12KT"?GOLD_RATE.rate12:GOLD_RATE.rate14;
+const rate=v.kt==="9KT"?GOLD_RATE.rate9:GOLD_RATE.rate14;
 
 const gold=rate*(v.weight||0);
-const making=gold*((+v.making||0)/100);
+const making=Number(v.making);
+
 const subtotal=gold+(+v.diamond||0)+making;
 const final=subtotal+(subtotal*((+v.gst||0)/100));
 
@@ -450,5 +438,4 @@ res.json({updated});
 
 });
 
-/* SERVER */
 app.listen(PORT,()=>console.log("🚀 SERVER RUNNING"));
