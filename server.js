@@ -1,7 +1,7 @@
 require("dotenv").config({ path: ".env" });
 
 const express = require("express");
-const fetch = require("node-fetch"); // v2
+const fetch = require("node-fetch");
 const fs = require("fs");
 const cors = require("cors");
 
@@ -15,14 +15,22 @@ const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = "./variant-data.json";
+const GOLD_FILE = "./gold-rate.json";
 
-// /* GOLD RATE */
-// let GOLD_RATE = {
-//   rate9: 8600,
-//   rate14: 9400
-// };
+/* ================= GOLD RATE ================= */
 
-/* LOAD CONFIG */
+let GOLD_RATE = {
+  rate9: 8600,
+  rate14: 9400
+};
+
+// 🔥 LOAD FROM FILE
+if (fs.existsSync(GOLD_FILE)) {
+  GOLD_RATE = JSON.parse(fs.readFileSync(GOLD_FILE));
+}
+
+/* ================= LOAD VARIANT ================= */
+
 let VARIANT_CONFIG = {};
 if (fs.existsSync(DATA_FILE)) {
   VARIANT_CONFIG = JSON.parse(fs.readFileSync(DATA_FILE));
@@ -32,7 +40,8 @@ function saveConfig() {
   fs.writeFileSync(DATA_FILE, JSON.stringify(VARIANT_CONFIG, null, 2));
 }
 
-/* SHOPIFY FETCH */
+/* ================= SHOPIFY FETCH ================= */
+
 async function shopifyFetch(url, options = {}) {
   try {
     const res = await fetch(url, options);
@@ -50,16 +59,19 @@ async function shopifyFetch(url, options = {}) {
   }
 }
 
-/* PRODUCTS CACHE */
+/* ================= PRODUCTS ================= */
+
 let PRODUCT_CACHE = [];
 
 async function getAllProducts() {
+
   if (PRODUCT_CACHE.length > 0) return PRODUCT_CACHE;
 
   let products = [];
   let url = `https://${SHOP}/admin/api/2023-10/products.json?limit=250`;
 
   while (url) {
+
     const res = await shopifyFetch(url, {
       headers: { "X-Shopify-Access-Token": TOKEN }
     });
@@ -80,12 +92,13 @@ async function getAllProducts() {
   }
 
   PRODUCT_CACHE = products;
+
   console.log("✅ Products Loaded:", products.length);
 
   return products;
 }
 
-/* UI */
+/* ================= UI ================= */
 
 app.get("/", (req, res) => {
 
@@ -187,8 +200,6 @@ document.getElementById(id).classList.add("active");
 }
 
 async function loadProducts(page=1){
-
-currentPage = page;
 
 const q=document.getElementById("searchInput").value || "";
 
@@ -383,11 +394,14 @@ total: Math.round(total)
 
 });
 
-/* UPDATE */
+/* UPDATE GOLD */
 app.post("/api/set-gold", async (req, res) => {
 
 GOLD_RATE.rate9 = parseFloat(req.body.rate12)||0;
 GOLD_RATE.rate14 = parseFloat(req.body.rate14)||0;
+
+// 🔥 SAVE GOLD RATE
+fs.writeFileSync(GOLD_FILE, JSON.stringify(GOLD_RATE));
 
 let updated = 0;
 
