@@ -16,11 +16,11 @@ const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = "./variant-data.json";
 
-/* GOLD RATE */
-let GOLD_RATE = {
-  rate9: 8600,
-  rate14: 9400
-};
+// /* GOLD RATE */
+// let GOLD_RATE = {
+//   rate9: 8600,
+//   rate14: 9400
+// };
 
 /* LOAD CONFIG */
 let VARIANT_CONFIG = {};
